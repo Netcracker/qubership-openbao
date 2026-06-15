@@ -75,7 +75,7 @@ spec:
       containers:
         - name: openbao
           {{ template "openbao.resources" . }}
-          image: {{ template "openbao.image" . }}
+          image: "{{ template "find_image" (dict "deployName" "openbao" "SERVICE_NAME" "openbao" "vals" .Values "default" .Values.openbao.server..image) -}}
           command:
           - "/bin/sh"
           - "-ec"
