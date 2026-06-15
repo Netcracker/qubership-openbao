@@ -75,6 +75,7 @@ spec:
       containers:
         - name: openbao
           {{ template "openbao.resources" . }}
+          image: "quay.io/openbao/openbao:2.5"
           image: "{{ template "find_image" (dict "deployName" "openbao" "SERVICE_NAME" "openbao" "vals" .Values "default" .Values.server.image) -}}
           command:
           - "/bin/sh"
