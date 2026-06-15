@@ -36,6 +36,20 @@ Expand the name of the chart.
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
+{{- define "find_image" -}}
+  {{- $image := .default -}}
+
+  {{- if .vals.deployDescriptor -}}
+    {{- if index .vals.deployDescriptor .deployName -}}
+      {{- $image = (index .vals.deployDescriptor .deployName "image") -}}
+    {{- else if index .vals.deployDescriptor .SERVICE_NAME -}}
+        {{- $image = (index .vals.deployDescriptor .SERVICE_NAME "image") -}}
+    {{- end -}}
+  {{- end -}}
+
+  {{- printf "%s" $image -}}
+{{- end -}}
+
 {{/*
 Allow the release namespace to be overridden
 */}}

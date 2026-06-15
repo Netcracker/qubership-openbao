@@ -75,8 +75,7 @@ spec:
       containers:
         - name: openbao
           {{ template "openbao.resources" . }}
-          image: "{{ .Values.server.image.registry | default "docker.io" }}/{{ .Values.server.image.repository }}:{{ .Values.server.image.tag | default (trimPrefix "v" .Chart.AppVersion) }}"
-          imagePullPolicy: {{ .Values.server.image.pullPolicy }}
+          image: "{{ template "find_image" (dict "deployName" "openbao" "SERVICE_NAME" "openbao" "vals" .Values "default" .Values.server.image) -}}
           command:
           - "/bin/sh"
           - "-ec"
