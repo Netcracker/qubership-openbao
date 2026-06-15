@@ -382,7 +382,16 @@ server:
   # should map directly to the value of the resources field for a PodSpec.
   # By default no direct resource request is made.
 
-  image: "quay.io/openbao/openbao:2.5"
+  #image: quay.io/openbao/openbao:2.5
+  image:
+    # -- image registry to use for server image
+    #registry: "quay.io"
+    # -- image repo to use for server image
+    repository: "quay.io/openbao/openbao"
+    # -- image tag to use for server image - defaults to chart appVersion
+    tag: "2.5"
+    # -- image pull policy to use for server image. if tag is "latest", set to "Always"
+    pullPolicy: IfNotPresent
 
   # Configure the Update Strategy Type for the StatefulSet
   # See https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#update-strategies
