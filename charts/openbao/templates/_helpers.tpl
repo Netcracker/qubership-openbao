@@ -37,6 +37,13 @@ Expand the name of the chart.
 {{- end -}}
 
 {{/*
+Find a consul image in various places.
+*/}}
+{{- define "openbao.server-image" -}}
+    {{- printf "%s" .Values.server.image -}}
+{{- end -}}
+
+{{/*
 Allow the release namespace to be overridden
 */}}
 {{- define "openbao.namespace" -}}
