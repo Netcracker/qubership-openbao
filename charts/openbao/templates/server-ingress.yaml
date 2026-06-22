@@ -23,9 +23,13 @@ metadata:
   namespace: {{ include "openbao.namespace" . }}
   labels:
     helm.sh/chart: {{ include "openbao.chart" . }}
-    app.kubernetes.io/name: {{ include "openbao.name" . }}
-    app.kubernetes.io/instance: {{ .Release.Name }}
-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/component: ingress
+    app.kubernetes.io/name: '{{ .Values.SERVICE_NAME }}'
+    app.kubernetes.io/part-of: '{{ .Values.APPLICATION_NAME }}'
+    deployment.netcracker.com/sessionId: '{{ .Values.DEPLOYMENT_SESSION_ID }}'
+    app.kubernetes.io/managed-by: '{{ .Values.MANAGED_BY }}'
+    deployment.netcracker.com/ingress-type: private-network
+    deployment.netcracker.com/ingress-audience-type: ops-user
     {{- with .Values.server.ingress.labels }}
       {{- toYaml . | nindent 4 }}
     {{- end }}

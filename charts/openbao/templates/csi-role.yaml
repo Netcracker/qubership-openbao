@@ -11,9 +11,11 @@ metadata:
   name: {{ template "openbao.fullname" . }}-csi-provider-role
   namespace: {{ include "openbao.namespace" . }}
   labels:
-    app.kubernetes.io/name: {{ include "openbao.name" . }}-csi-provider
     app.kubernetes.io/instance: {{ .Release.Name }}
-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/name: '{{ .Values.SERVICE_NAME }}'
+    app.kubernetes.io/part-of: '{{ .Values.APPLICATION_NAME }}'
+    app.kubernetes.io/managed-by: '{{ .Values.MANAGED_BY }}'
+    deployment.netcracker.com/sessionId: '{{ .Values.DEPLOYMENT_SESSION_ID }}'
 rules:
 - apiGroups: [""]
   resources: ["secrets"]

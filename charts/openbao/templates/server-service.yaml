@@ -15,9 +15,12 @@ metadata:
   namespace: {{ include "openbao.namespace" . }}
   labels:
     helm.sh/chart: {{ include "openbao.chart" . }}
-    app.kubernetes.io/name: {{ include "openbao.name" . }}
     app.kubernetes.io/instance: {{ .Release.Name }}
-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    name: '{{ .Values.SERVICE_NAME }}'
+    app.kubernetes.io/name: '{{ .Values.SERVICE_NAME }}'
+    app.kubernetes.io/part-of: '{{ .Values.APPLICATION_NAME }}'
+    app.kubernetes.io/managed-by: '{{ .Values.MANAGED_BY }}'
+    deployment.netcracker.com/sessionId: '{{ .Values.DEPLOYMENT_SESSION_ID }}'    
     {{- if  .Values.server.service.extraLabels -}}
       {{- toYaml .Values.server.service.extraLabels | nindent 4 -}}
     {{- end -}}
