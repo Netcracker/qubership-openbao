@@ -14,9 +14,13 @@ metadata:
   name: {{ template "openbao.fullname" . }}
   namespace: {{ include "openbao.namespace" . }}
   labels:
-    app.kubernetes.io/name: {{ include "openbao.name" . }}
-    app.kubernetes.io/instance: {{ .Release.Name }}
-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/name: '{{ .Values.SERVICE_NAME }}'
+    app.kubernetes.io/version: '{{ .Values.ARTIFACT_DESCRIPTOR_VERSION }}'
+    app.kubernetes.io/part-of: '{{ .Values.APPLICATION_NAME }}'
+    app.kubernetes.io/managed-by: '{{ .Values.MANAGED_BY }}'
+    app.kubernetes.io/component: backend
+    app.kubernetes.io/technology: go
+    deployment.netcracker.com/sessionId: '{{ .Values.DEPLOYMENT_SESSION_ID }}'
   {{- template "openbao.statefulSet.annotations" . }}
 spec:
   serviceName: {{ template "openbao.fullname" . }}-internal
