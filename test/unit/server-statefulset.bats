@@ -210,6 +210,33 @@ load _helpers
   [ "${actual}" = "null" ]
 }
 
+@test "server/standalone-StatefulSet: adds dev mode secret volume and mount" {
+  cd `chart_dir`
+  local secret_name=$(helm template \
+      --show-only templates/server-statefulset.yaml  \
+      --set 'server.dev_mode.enabled=true' \
+      . | tee /dev/stderr |
+      yq -r '.spec.template.spec.volumes[] | select(.name=="static-key-volume") | .secret.secretName' | tee /dev/stderr)
+  [ "${secret_name}" = "bao-static-unseal-key" ]
+
+  local mount_path=$(helm template \
+      --show-only templates/server-statefulset.yaml  \
+      --set 'server.dev_mode.enabled=true' \
+      . | tee /dev/stderr |
+      yq -r '.spec.template.spec.containers[0].volumeMounts[] | select(.name=="static-key-volume") | .mountPath' | tee /dev/stderr)
+  [ "${mount_path}" = "/bao/secrets" ]
+}
+
+@test "server/standalone-StatefulSet: adds dev mode postStart init script" {
+  cd `chart_dir`
+  local script=$(helm template \
+      --show-only templates/server-statefulset.yaml  \
+      --set 'server.dev_mode.enabled=true' \
+      . | tee /dev/stderr |
+      yq -r '.spec.template.spec.containers[0].lifecycle.postStart.exec.command[2]' | tee /dev/stderr)
+  [[ "${script}" == *"bao operator init"* ]]
+}
+
 #--------------------------------------------------------------------
 # updateStrategy
 

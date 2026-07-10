@@ -1,0 +1,19 @@
+{{- if eq (.Values.server.dev_mode.enabled | toString) "true" }}
+{{- $sealToken := .Values.server.dev_mode.sealToken | default "" -}}
+{{- if not $sealToken }}
+{{- $sealToken = randAlphaNum 64 | lower -}}
+{{- end }}
+apiVersion: v1
+data:
+  current-key: {{ $sealToken | b64enc | quote }}
+kind: Secret
+metadata:
+  name: bao-static-unseal-key
+  namespace: {{ include "openbao.namespace" . }}
+  labels:
+    app.kubernetes.io/name: '{{ .Values.SERVICE_NAME }}'
+    app.kubernetes.io/part-of: '{{ .Values.APPLICATION_NAME }}'
+    app.kubernetes.io/managed-by: '{{ .Values.MANAGED_BY }}'
+    deployment.netcracker.com/sessionId: '{{ .Values.DEPLOYMENT_SESSION_ID }}'
+type: Opaque
+{{ end }}

@@ -1,0 +1,83 @@
+server:
+  image:
+    registry: "artifactorycn.netcracker.com:17151"
+    repository: "artifactorycn.netcracker.com:17151/openbao/openbao"
+    tag: "2.5.5"
+  dataStorage:
+    storageClass: local-path
+  auditStorage:
+    storageClass: local-path
+  volumeMounts:
+   - mountPath: /bao/secrets
+     name: static-key-volume
+     readOnly: true
+  #  - mountPath: /openbao/userconfig/openbao-server-tls
+    #  name: userconfig-openbao-server-tls
+    #  readOnly: true
+  volumes:
+   - name: static-key-volume
+     secret:
+       secretName: bao-static-unseal-key
+  #  - name: userconfig-openbao-server-tls
+  #    secret:
+  #      defaultMode: 420
+  #      secretName: openbao-tls
+  extraEnvironmentVars:
+    # BAO_SKIP_VERIFY: "true"
+    # BAO_ADDR: 'https://127.0.0.1:8200'
+  standalone:
+    config: |
+      ui = true
+
+      listener "tcp" {
+        tls_disable = 1
+        address = "[::]:8200"
+        cluster_address = "[::]:8201"
+        # tls_cert_file = "/openbao/userconfig/openbao-server-tls/tls.crt"
+        # tls_key_file  = "/openbao/userconfig/openbao-server-tls/tls.key"
+        # tls_client_ca_file = "/openbao/userconfig/openbao-server-tls/openbao.ca"
+        # Enable unauthenticated metrics access (necessary for Prometheus Operator)
+        #telemetry {
+        #  unauthenticated_metrics_access = "true"
+        #}
+      }
+      storage "file" {
+        path = "/openbao/data"
+      }
+      seal "static" {
+        current_key_id = "current-key"
+        current_key = "file:///bao/secrets/current-key"
+      }
+  ingress:
+    enabled: false
+    annotations:
+      nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+      nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+    hosts:
+      - host: openbao-new.mich0821.s3test.netcracker.com
+    extraPaths:
+     - path: /*
+       pathType: Prefix
+       backend:
+         service:
+           name: ssl-redirect
+           port:
+             number: 8200
+#    tls:
+#    - secretName: openbao-tls
+#      hosts:
+#         - openbao.mich0821.s3test.netcracker.com
+  postStart:
+    - /bin/sh
+    - -c
+    - |
+      sleep 20
+      # export BAO_ADDR='http://127.0.0.1:8200'
+      # export BAO_SKIP_VERIFY=true
+      INIT_STATUS=$(bao status -tls-skip-verify -format=json | grep -o '"initialized":[^,]*' | cut -d: -f2)
+      if [ $INIT_STATUS = "false" ]; then
+        bao operator init >> /tmp/keys.file
+      else
+        echo "OpenBao is already initialized."
+      fi
+

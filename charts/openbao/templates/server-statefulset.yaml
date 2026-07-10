@@ -213,7 +213,23 @@ spec:
                   # to this pod while it's terminating
                   "sleep {{ .Values.server.preStopSleepSeconds }} && kill -SIGTERM $(pidof bao)",
                 ]
-            {{- if .Values.server.postStart }}
+            {{- if eq (.Values.server.dev_mode.enabled | toString) "true" }}
+            postStart:
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - |
+                    sleep 20
+                    # export BAO_ADDR='http://127.0.0.1:8200'
+                    # export BAO_SKIP_VERIFY=true
+                    INIT_STATUS=$(bao status -tls-skip-verify -format=json | grep -o '"initialized":[^,]*' | cut -d: -f2)
+                    if [ "$INIT_STATUS" = "false" ]; then
+                      bao operator init >> /tmp/keys.file
+                    else
+                      echo "OpenBao is already initialized."
+                    fi
+            {{- else if .Values.server.postStart }}
             postStart:
               exec:
                 command:
