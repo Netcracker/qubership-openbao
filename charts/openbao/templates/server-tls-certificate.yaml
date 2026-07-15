@@ -1,0 +1,84 @@
+{{/*
+Copyright (c) HashiCorp, Inc.
+SPDX-License-Identifier: MPL-2.0
+*/}}
+
+{{ template "openbao.mode" . }}
+{{- if ne .mode "external" }}
+{{- if ne .mode "dev" }}
+{{- if .serverEnabled -}}
+{{- if eq (include "openbao.tlsEnabled" .) "true" -}}
+{{- if eq .Values.server.tls.source "certManager" -}}
+# cert-manager Certificate for the OpenBao server TLS listener.
+# Generated because global.tlsDisable=false and server.tls.source=certManager.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ template "openbao.fullname" . }}-tls
+  namespace: {{ include "openbao.namespace" . }}
+  labels:
+    helm.sh/chart: {{ include "openbao.chart" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/name: '{{ .Values.SERVICE_NAME }}'
+    app.kubernetes.io/part-of: '{{ .Values.APPLICATION_NAME }}'
+    app.kubernetes.io/managed-by: '{{ .Values.MANAGED_BY }}'
+    app.kubernetes.io/component: server
+    deployment.netcracker.com/sessionId: '{{ .Values.DEPLOYMENT_SESSION_ID }}'
+spec:
+  secretName: {{ template "openbao.tls.secretName" . }}
+  {{- with .Values.server.tls.certManager.duration }}
+  duration: {{ . }}
+  {{- end }}
+  {{- with .Values.server.tls.certManager.renewBefore }}
+  renewBefore: {{ . }}
+  {{- end }}
+  {{- with .Values.server.tls.certManager.privateKey }}
+  privateKey:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  issuerRef:
+    name: {{ .Values.server.tls.certManager.issuerRef.name }}
+    kind: {{ .Values.server.tls.certManager.issuerRef.kind }}
+    group: {{ .Values.server.tls.certManager.issuerRef.group }}
+  commonName: {{ template "openbao.fullname" . }}
+  dnsNames:
+    {{- $fullname := include "openbao.fullname" . }}
+    {{- $namespace := include "openbao.namespace" . }}
+    # Client-facing service (ClusterIP)
+    - {{ $fullname }}
+    - {{ $fullname }}.{{ $namespace }}
+    - {{ $fullname }}.{{ $namespace }}.svc
+    - {{ $fullname }}.{{ $namespace }}.svc.cluster.local
+    # Headless service used for peer / raft join and replication
+    - {{ $fullname }}-internal
+    - {{ $fullname }}-internal.{{ $namespace }}
+    - {{ $fullname }}-internal.{{ $namespace }}.svc
+    - {{ $fullname }}-internal.{{ $namespace }}.svc.cluster.local
+    # Wildcard for per-pod DNS (<pod>.<fullname>-internal...) used by raft/HA
+    - '*.{{ $fullname }}-internal'
+    - '*.{{ $fullname }}-internal.{{ $namespace }}.svc.cluster.local'
+    {{- if eq .mode "ha" }}
+    # HA active / standby services
+    - {{ $fullname }}-active
+    - {{ $fullname }}-active.{{ $namespace }}
+    - {{ $fullname }}-active.{{ $namespace }}.svc
+    - {{ $fullname }}-active.{{ $namespace }}.svc.cluster.local
+    - {{ $fullname }}-standby
+    - {{ $fullname }}-standby.{{ $namespace }}
+    - {{ $fullname }}-standby.{{ $namespace }}.svc
+    - {{ $fullname }}-standby.{{ $namespace }}.svc.cluster.local
+    {{- end }}
+    - localhost
+    {{- range .Values.server.tls.certManager.extraSans }}
+    - {{ . | quote }}
+    {{- end }}
+  ipAddresses:
+    - 127.0.0.1
+    {{- range .Values.server.tls.certManager.extraIpSans }}
+    - {{ . | quote }}
+    {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

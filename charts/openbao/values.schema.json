@@ -533,6 +533,70 @@
                         }
                     }
                 },
+                "tls": {
+                    "type": "object",
+                    "properties": {
+                        "source": {
+                            "type": "string",
+                            "enum": ["certManager", "existingSecret"]
+                        },
+                        "secretName": {
+                            "type": "string"
+                        },
+                        "certKey": {
+                            "type": "string"
+                        },
+                        "keyKey": {
+                            "type": "string"
+                        },
+                        "caKey": {
+                            "type": "string"
+                        },
+                        "mountPath": {
+                            "type": "string"
+                        },
+                        "tlsMinVersion": {
+                            "type": "string"
+                        },
+                        "tlsCipherSuites": {
+                            "type": "string"
+                        },
+                        "certManager": {
+                            "type": "object",
+                            "properties": {
+                                "issuerRef": {
+                                    "type": "object",
+                                    "properties": {
+                                        "name": {
+                                            "type": "string"
+                                        },
+                                        "kind": {
+                                            "type": "string"
+                                        },
+                                        "group": {
+                                            "type": "string"
+                                        }
+                                    }
+                                },
+                                "duration": {
+                                    "type": "string"
+                                },
+                                "renewBefore": {
+                                    "type": "string"
+                                },
+                                "privateKey": {
+                                    "type": "object"
+                                },
+                                "extraSans": {
+                                    "type": "array"
+                                },
+                                "extraIpSans": {
+                                    "type": "array"
+                                }
+                            }
+                        }
+                    }
+                },
                 "service": {
                     "type": "object",
                     "properties": {
@@ -759,6 +823,9 @@
                         },
                         "tlsConfig": {
                             "type": "object"
+                        },
+                        "insecureSkipVerify": {
+                            "type": "boolean"
                         }
                     }
                 }

@@ -298,12 +298,28 @@ Kubernetes: `>= 1.30.0-0`
 | server.serviceAccount.name | string | `""` |  |
 | server.serviceAccount.serviceDiscovery.enabled | bool | `true` |  |
 | server.shareProcessNamespace | bool | `false` | shareProcessNamespace enables process namespace sharing between OpenBao and the extraContainers This is useful if OpenBao must be signaled, e.g. to send a SIGHUP for a log rotation |
-| server.standalone.config | string | `"ui = true\n\nlistener \"tcp\" {\n  tls_disable = 1\n  address = \"[::]:8200\"\n  cluster_address = \"[::]:8201\"\n  # Enable unauthenticated metrics access (necessary for Prometheus Operator)\n  #telemetry {\n  #  unauthenticated_metrics_access = \"true\"\n  #}\n}\nstorage \"file\" {\n  path = \"/openbao/data\"\n}\n\n# Example configuration for using auto-unseal, using Google Cloud KMS. The\n# GKMS keys must already exist, and the cluster must have a service account\n# that is authorized to access GCP KMS.\n#seal \"gcpckms\" {\n#   project     = \"openbao-helm-dev\"\n#   region      = \"global\"\n#   key_ring    = \"openbao-helm-unseal-kr\"\n#   crypto_key  = \"openbao-helm-unseal-key\"\n#}\n\n# Example configuration for enabling Prometheus metrics in your config.\n#telemetry {\n#  prometheus_retention_time = \"30s\"\n#  disable_hostname = true\n#}\n"` |  |
+| server.standalone.config | string | (HCL) | Standalone server HCL config. The `listener "tcp"` block is templated: it renders `tls_disable = 1` when `global.tlsDisable=true`, otherwise `tls_cert_file`/`tls_key_file`/`tls_min_version` (and `tls_cipher_suites` when set) from `server.tls.*`. |
 | server.standalone.enabled | string | `"-"` |  |
 | server.statefulSet.annotations | object | `{}` |  |
 | server.statefulSet.securityContext.container | object | `{}` |  |
 | server.statefulSet.securityContext.pod | object | `{}` |  |
 | server.terminationGracePeriodSeconds | int | `10` |  |
+| server.tls.source | string | `"certManager"` | How the server TLS certificate is provisioned: `certManager` or `existingSecret`. Only effective when `global.tlsDisable=false`. |
+| server.tls.secretName | string | `""` | Name of the kubernetes.io/tls secret with the server cert. Defaults to `<fullname>-tls`. |
+| server.tls.certKey | string | `"tls.crt"` | Key of the server certificate inside the TLS secret. |
+| server.tls.keyKey | string | `"tls.key"` | Key of the private key inside the TLS secret. |
+| server.tls.caKey | string | `"ca.crt"` | Key of the CA certificate used for `BAO_CACERT`, probes, metrics and snapshot agent. |
+| server.tls.mountPath | string | `"/openbao/tls"` | Directory the TLS secret is mounted into inside the server container. |
+| server.tls.tlsMinVersion | string | `"tls12"` | Minimum accepted TLS version for the listener (tls10/tls11/tls12/tls13). |
+| server.tls.tlsCipherSuites | string | `""` | Optional cipher suite list for the listener (TLS 1.2 only). |
+| server.tls.certManager.issuerRef.name | string | `"openbao-ca-issuer"` | cert-manager issuer name (source=certManager). |
+| server.tls.certManager.issuerRef.kind | string | `"Issuer"` | cert-manager issuer kind (Issuer or ClusterIssuer). |
+| server.tls.certManager.issuerRef.group | string | `"cert-manager.io"` | cert-manager issuer API group. |
+| server.tls.certManager.duration | string | `"8760h"` | Requested certificate duration. |
+| server.tls.certManager.renewBefore | string | `"720h"` | Renew the certificate this long before expiry. |
+| server.tls.certManager.privateKey | object | `{"algorithm":"ECDSA","rotationPolicy":"Always","size":256}` | Private key configuration for the generated certificate. |
+| server.tls.certManager.extraSans | list | `[]` | Additional DNS SANs to add to the certificate. |
+| server.tls.certManager.extraIpSans | list | `[]` | Additional IP SANs to add to the certificate. |
 | server.tolerations | list | `[]` |  |
 | server.topologySpreadConstraints | list | `[]` |  |
 | server.updateStrategyType | string | `"OnDelete"` |  |
@@ -319,6 +335,7 @@ Kubernetes: `>= 1.30.0-0`
 | serverTelemetry.prometheusRules.selectors | object | `{}` |  |
 | serverTelemetry.serviceMonitor.authorization | object | `{}` |  |
 | serverTelemetry.serviceMonitor.enabled | bool | `false` |  |
+| serverTelemetry.serviceMonitor.insecureSkipVerify | bool | `false` | When TLS is enabled and `tlsConfig` is unset, skip metrics endpoint certificate verification if true; otherwise verify against the server TLS CA. |
 | serverTelemetry.serviceMonitor.interval | string | `"30s"` |  |
 | serverTelemetry.serviceMonitor.port | string | `""` | Port which Prometheus uses when scraping metrics. If empty will use `openbao.scheme` helper for its value |
 | serverTelemetry.serviceMonitor.scheme | string | `""` | scheme to use when Prometheus scrapes metrics. If empty will use `openbao.scheme` helper for its value |

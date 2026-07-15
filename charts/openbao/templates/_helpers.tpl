@@ -220,6 +220,12 @@ extra volumes the user may have specified (such as a secret with TLS).
           configMap:
             name: {{ template "openbao.fullname" . }}-config
   {{ end }}
+  {{- if and (ne .mode "dev") (eq (include "openbao.tlsEnabled" .) "true") }}
+        - name: tls
+          secret:
+            secretName: {{ template "openbao.tls.secretName" . }}
+            defaultMode: 420
+  {{- end }}
   {{- range .Values.server.extraVolumes }}
         - name: userconfig-{{ .name }}
           {{ .type }}:
@@ -299,6 +305,11 @@ based on the mode configured.
             - name: config
               mountPath: /openbao/config
   {{ end }}
+  {{- if and (ne .mode "dev") (eq (include "openbao.tlsEnabled" .) "true") }}
+            - name: tls
+              readOnly: true
+              mountPath: {{ .Values.server.tls.mountPath }}
+  {{- end }}
   {{- range .Values.server.extraVolumes }}
             - name: userconfig-{{ .name }}
               readOnly: true
@@ -1111,6 +1122,38 @@ Inject extra environment populated by secrets, if populated
 {{- else -}}
 {{ "https" }}
 {{- end -}}
+{{- end -}}
+
+{{/*
+Whether server TLS is enabled. TLS is on whenever end-to-end encryption is not
+disabled via global.tlsDisable.
+*/}}
+{{- define "openbao.tlsEnabled" -}}
+{{- if .Values.global.tlsDisable -}}
+{{- "false" -}}
+{{- else -}}
+{{- "true" -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Name of the Kubernetes secret that holds the server TLS material.
+Defaults to "<fullname>-tls" when server.tls.secretName is empty.
+*/}}
+{{- define "openbao.tls.secretName" -}}
+{{- if .Values.server.tls.secretName -}}
+{{- .Values.server.tls.secretName -}}
+{{- else -}}
+{{- printf "%s-tls" (include "openbao.fullname" .) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Absolute path to the CA certificate mounted inside the server container.
+Used for BAO_CACERT, probes and in-cluster verification.
+*/}}
+{{- define "openbao.tls.caCertPath" -}}
+{{- printf "%s/%s" .Values.server.tls.mountPath .Values.server.tls.caKey -}}
 {{- end -}}
 
 {{/*

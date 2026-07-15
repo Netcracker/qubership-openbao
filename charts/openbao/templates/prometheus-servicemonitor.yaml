@@ -48,9 +48,20 @@ spec:
     params:
       format:
       - prometheus
-    {{- with .Values.serverTelemetry.serviceMonitor.tlsConfig }}
+    {{- if .Values.serverTelemetry.serviceMonitor.tlsConfig }}
     tlsConfig:
-    {{- toYaml . | nindent 6 }}
+    {{- toYaml .Values.serverTelemetry.serviceMonitor.tlsConfig | nindent 6 }}
+    {{- else if eq (include "openbao.tlsEnabled" .) "true" }}
+    tlsConfig:
+      {{- if .Values.serverTelemetry.serviceMonitor.insecureSkipVerify }}
+      insecureSkipVerify: true
+      {{- else }}
+      serverName: {{ template "openbao.fullname" . }}
+      ca:
+        secret:
+          name: {{ template "openbao.tls.secretName" . }}
+          key: {{ .Values.server.tls.caKey }}
+      {{- end }}
     {{- else }}
     tlsConfig:
       insecureSkipVerify: true

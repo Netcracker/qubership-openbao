@@ -104,6 +104,10 @@ spec:
                   fieldPath: metadata.namespace
             - name: BAO_ADDR
               value: "{{ include "openbao.scheme" . }}://127.0.0.1:8200"
+            {{- if eq (include "openbao.tlsEnabled" .) "true" }}
+            - name: BAO_CACERT
+              value: "{{ include "openbao.tls.caCertPath" . }}"
+            {{- end }}
             - name: BAO_API_ADDR
               {{- if .Values.server.ha.apiAddr }}
               value: {{ .Values.server.ha.apiAddr }}
@@ -171,7 +175,7 @@ spec:
             #   1 - error
             #   2 - sealed
             exec:
-              command: ["/bin/sh", "-ec", "bao status -tls-skip-verify"]
+              command: ["/bin/sh", "-ec", {{ if eq (include "openbao.tlsEnabled" .) "true" }}"bao status"{{ else }}"bao status -tls-skip-verify"{{ end }}]
             {{- end }}
             failureThreshold: {{ .Values.server.readinessProbe.failureThreshold }}
             initialDelaySeconds: {{ .Values.server.readinessProbe.initialDelaySeconds }}
@@ -223,7 +227,7 @@ spec:
                     sleep 20
                     # export BAO_ADDR='http://127.0.0.1:8200'
                     # export BAO_SKIP_VERIFY=true
-                    INIT_STATUS=$(bao status -tls-skip-verify -format=json | grep -o '"initialized":[^,]*' | cut -d: -f2)
+                    INIT_STATUS=$(bao status {{ if not (eq (include "openbao.tlsEnabled" .) "true") }}-tls-skip-verify {{ end }}-format=json | grep -o '"initialized":[^,]*' | cut -d: -f2)
                     if [ "$INIT_STATUS" = "false" ]; then
                       bao operator init >> /tmp/keys.file
                     else

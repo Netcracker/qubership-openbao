@@ -55,6 +55,11 @@ spec:
             volumeMounts:
               - name: snapshot-dir
                 mountPath: /bao-snapshots
+              {{- if eq (include "openbao.tlsEnabled" .) "true" }}
+              - name: tls
+                readOnly: true
+                mountPath: {{ .Values.server.tls.mountPath }}
+              {{- end }}
               {{- with .Values.snapshotAgent.extraVolumeMounts }}
               {{- toYaml . | nindent 14 }}
               {{- end }}
@@ -62,6 +67,12 @@ spec:
           volumes:
           - name: snapshot-dir
             emptyDir: {}
+          {{- if eq (include "openbao.tlsEnabled" .) "true" }}
+          - name: tls
+            secret:
+              secretName: {{ template "openbao.tls.secretName" . }}
+              defaultMode: 420
+          {{- end }}
           {{- if .Values.snapshotAgent.extraVolumes }}
             {{- toYaml .Values.snapshotAgent.extraVolumes | nindent 10 }}
           {{- end }}
