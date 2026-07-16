@@ -1139,12 +1139,40 @@ disabled via global.tlsDisable.
 {{/*
 Name of the Kubernetes secret that holds the server TLS material.
 Defaults to "<fullname>-tls" when server.tls.secretName is empty.
+The same name is used across all three sources (certManager, rawCerts,
+existingSecret) so that the pod mount, BAO_CACERT and Gateway policies all
+reference a single, consistent secret name.
 */}}
 {{- define "openbao.tls.secretName" -}}
 {{- if .Values.server.tls.secretName -}}
 {{- .Values.server.tls.secretName -}}
 {{- else -}}
 {{- printf "%s-tls" (include "openbao.fullname" .) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Whether the chart should create a self-signed cert-manager Issuer. True only
+when TLS is on, source=certManager, generateIssuer is requested and no
+ClusterIssuer name is provided.
+*/}}
+{{- define "openbao.tls.useGeneratedIssuer" -}}
+{{- if and (eq (include "openbao.tlsEnabled" .) "true") (eq .Values.server.tls.source "certManager") .Values.server.tls.certManager.generateIssuer (not .Values.server.tls.certManager.clusterIssuerName) -}}
+{{- "true" -}}
+{{- else -}}
+{{- "false" -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Whether the chart should create a kubernetes.io/tls secret from inline PEM
+material. True only when TLS is on and source=rawCerts with both crt and key set.
+*/}}
+{{- define "openbao.tls.useRawCerts" -}}
+{{- if and (eq (include "openbao.tlsEnabled" .) "true") (eq .Values.server.tls.source "rawCerts") .Values.server.tls.certs.crt .Values.server.tls.certs.key -}}
+{{- "true" -}}
+{{- else -}}
+{{- "false" -}}
 {{- end -}}
 {{- end -}}
 

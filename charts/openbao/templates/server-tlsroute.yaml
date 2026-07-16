@@ -1,6 +1,13 @@
 {{ template "openbao.mode" . }}
 {{- if ne .mode "external" }}
-{{- if .Values.server.gateway.tlsRoute.enabled -}}
+{{- $tlsRouteCRD := .Capabilities.APIVersions.Has (printf "%s/TLSRoute" .Values.server.gateway.tlsRoute.apiVersion) -}}
+{{- /*
+TLSRoute implements TLS passthrough: the gateway forwards the encrypted stream
+and OpenBao terminates TLS. This matches the seaweedfs passthrough mode used
+when the certificate is not chart-generated (source=rawCerts / existingSecret).
+Only rendered when the TLSRoute CRD is present in the cluster.
+*/ -}}
+{{- if and .Values.server.gateway.tlsRoute.enabled $tlsRouteCRD -}}
 {{- $serviceName := include "openbao.fullname" . -}}
 {{- template "openbao.serverServiceEnabled" . -}}
 {{- if .serverServiceEnabled -}}

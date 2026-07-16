@@ -538,10 +538,24 @@
                     "properties": {
                         "source": {
                             "type": "string",
-                            "enum": ["certManager", "existingSecret"]
+                            "enum": ["certManager", "rawCerts", "existingSecret"]
                         },
                         "secretName": {
                             "type": "string"
+                        },
+                        "certs": {
+                            "type": "object",
+                            "properties": {
+                                "crt": {
+                                    "type": "string"
+                                },
+                                "key": {
+                                    "type": "string"
+                                },
+                                "ca": {
+                                    "type": "string"
+                                }
+                            }
                         },
                         "certKey": {
                             "type": "string"
@@ -564,6 +578,12 @@
                         "certManager": {
                             "type": "object",
                             "properties": {
+                                "generateIssuer": {
+                                    "type": "boolean"
+                                },
+                                "clusterIssuerName": {
+                                    "type": "string"
+                                },
                                 "issuerRef": {
                                     "type": "object",
                                     "properties": {
@@ -581,6 +601,9 @@
                                 "duration": {
                                     "type": "string"
                                 },
+                                "durationDays": {
+                                    "type": "integer"
+                                },
                                 "renewBefore": {
                                     "type": "string"
                                 },
@@ -592,6 +615,17 @@
                                 },
                                 "extraIpSans": {
                                     "type": "array"
+                                },
+                                "subjectAlternativeName": {
+                                    "type": "object",
+                                    "properties": {
+                                        "additionalDnsNames": {
+                                            "type": ["object", "array"]
+                                        },
+                                        "additionalIpAddresses": {
+                                            "type": ["object", "array"]
+                                        }
+                                    }
                                 }
                             }
                         }

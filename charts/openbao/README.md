@@ -304,22 +304,30 @@ Kubernetes: `>= 1.30.0-0`
 | server.statefulSet.securityContext.container | object | `{}` |  |
 | server.statefulSet.securityContext.pod | object | `{}` |  |
 | server.terminationGracePeriodSeconds | int | `10` |  |
-| server.tls.source | string | `"certManager"` | How the server TLS certificate is provisioned: `certManager` or `existingSecret`. Only effective when `global.tlsDisable=false`. |
+| server.tls.source | string | `"certManager"` | How the server TLS certificate is provisioned: `certManager`, `rawCerts` or `existingSecret`. Only effective when `global.tlsDisable=false`. |
 | server.tls.secretName | string | `""` | Name of the kubernetes.io/tls secret with the server cert. Defaults to `<fullname>-tls`. |
+| server.tls.certs.crt | string | `""` | Inline PEM certificate (source=rawCerts). |
+| server.tls.certs.key | string | `""` | Inline PEM private key (source=rawCerts). |
+| server.tls.certs.ca | string | `""` | Optional inline PEM CA certificate written to `ca.crt` (source=rawCerts). |
 | server.tls.certKey | string | `"tls.crt"` | Key of the server certificate inside the TLS secret. |
 | server.tls.keyKey | string | `"tls.key"` | Key of the private key inside the TLS secret. |
 | server.tls.caKey | string | `"ca.crt"` | Key of the CA certificate used for `BAO_CACERT`, probes, metrics and snapshot agent. |
 | server.tls.mountPath | string | `"/openbao/tls"` | Directory the TLS secret is mounted into inside the server container. |
 | server.tls.tlsMinVersion | string | `"tls12"` | Minimum accepted TLS version for the listener (tls10/tls11/tls12/tls13). |
 | server.tls.tlsCipherSuites | string | `""` | Optional cipher suite list for the listener (TLS 1.2 only). |
-| server.tls.certManager.issuerRef.name | string | `"openbao-ca-issuer"` | cert-manager issuer name (source=certManager). |
+| server.tls.certManager.generateIssuer | bool | `false` | When true, the chart creates a self-signed `Issuer` named `<fullname>-issuer` and uses it to sign the cert (source=certManager). Ignored when `clusterIssuerName` is set. |
+| server.tls.certManager.clusterIssuerName | string | `""` | Name of an existing `ClusterIssuer` to sign the cert. Takes precedence over `generateIssuer` and `issuerRef`. |
+| server.tls.certManager.issuerRef.name | string | `"openbao-ca-issuer"` | cert-manager issuer name (used when `generateIssuer` is false and `clusterIssuerName` is empty). |
 | server.tls.certManager.issuerRef.kind | string | `"Issuer"` | cert-manager issuer kind (Issuer or ClusterIssuer). |
 | server.tls.certManager.issuerRef.group | string | `"cert-manager.io"` | cert-manager issuer API group. |
-| server.tls.certManager.duration | string | `"8760h"` | Requested certificate duration. |
+| server.tls.certManager.duration | string | `"8760h"` | Requested certificate duration. Takes precedence over `durationDays`. |
+| server.tls.certManager.durationDays | int | `365` | Requested certificate duration in days (`durationDays * 24h`), used when `duration` is empty. |
 | server.tls.certManager.renewBefore | string | `"720h"` | Renew the certificate this long before expiry. |
-| server.tls.certManager.privateKey | object | `{"algorithm":"ECDSA","rotationPolicy":"Always","size":256}` | Private key configuration for the generated certificate. |
+| server.tls.certManager.privateKey | object | `{"algorithm":"ECDSA","rotationPolicy":"Always","size":256}` | Private key configuration for the generated certificate (ECDSA; set to RSA/PKCS1/2048 for parity with seaweedfs). |
 | server.tls.certManager.extraSans | list | `[]` | Additional DNS SANs to add to the certificate. |
 | server.tls.certManager.extraIpSans | list | `[]` | Additional IP SANs to add to the certificate. |
+| server.tls.certManager.subjectAlternativeName.additionalDnsNames | object | `{}` | Seaweedfs-compatible additional DNS SANs, merged with `extraSans`. |
+| server.tls.certManager.subjectAlternativeName.additionalIpAddresses | object | `{}` | Seaweedfs-compatible additional IP SANs, merged with `extraIpSans`. |
 | server.tolerations | list | `[]` |  |
 | server.topologySpreadConstraints | list | `[]` |  |
 | server.updateStrategyType | string | `"OnDelete"` |  |

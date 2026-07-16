@@ -14,19 +14,64 @@ end-to-end TLS so that:
 - the Prometheus `ServiceMonitor` and the snapshot agent trust the same CA.
 
 TLS is turned on by setting `global.tlsDisable: false`. The server certificate
-is provisioned through one of two sources selected by `server.tls.source`:
+is provisioned through one of three sources selected by `server.tls.source`:
 
 | `server.tls.source` | Behaviour |
 | ------------------- | --------- |
-| `certManager` (default) | The chart creates a cert-manager `Certificate` resource. Requires cert-manager in the cluster. |
+| `certManager` (default) | The chart creates a cert-manager `Certificate` resource. It can also bootstrap its own self-signed `Issuer` (`certManager.generateIssuer: true`) or use a `ClusterIssuer` (`certManager.clusterIssuerName`). Requires cert-manager in the cluster. |
+| `rawCerts` | You supply the certificate and key inline via `server.tls.certs.crt` / `server.tls.certs.key` (optionally `certs.ca`); the chart creates a `kubernetes.io/tls` secret from them via Helm hooks. |
 | `existingSecret` | You supply a pre-created `kubernetes.io/tls` secret (with `tls.crt`, `tls.key`, `ca.crt`). Set `server.tls.secretName`. |
+
+In every mode the resulting secret is named `<release>-openbao-tls` by default (or
+`server.tls.secretName` when set) and is mounted into the server pod at
+`server.tls.mountPath` (default `/openbao/tls`).
 
 ### Option A: cert-manager (recommended)
 
-Prerequisites: [cert-manager](https://cert-manager.io/) is installed and an
-`Issuer`/`ClusterIssuer` capable of signing server certificates exists.
+Prerequisites: [cert-manager](https://cert-manager.io/) is installed.
 
-A minimal self-signed CA issuer for testing:
+The simplest setup lets the chart create its own self-signed `Issuer`
+(mirroring the seaweedfs pattern), so no `Issuer`/`ClusterIssuer` has to be
+created by hand:
+
+```yaml
+global:
+  tlsDisable: false
+
+server:
+  tls:
+    source: certManager
+    certManager:
+      generateIssuer: true      # chart creates <release>-openbao-issuer (selfSigned)
+      durationDays: 365
+```
+
+To sign with an existing cluster-wide issuer instead, set
+`clusterIssuerName` (it takes precedence over `generateIssuer` and `issuerRef`):
+
+```yaml
+server:
+  tls:
+    source: certManager
+    certManager:
+      clusterIssuerName: my-cluster-ca
+```
+
+Or reference a namespaced `Issuer`/`ClusterIssuer` you manage yourself (the
+original behaviour) by leaving both `generateIssuer` and `clusterIssuerName`
+unset and configuring `issuerRef`:
+
+```yaml
+server:
+  tls:
+    source: certManager
+    certManager:
+      issuerRef:
+        name: openbao-ca-issuer
+        kind: Issuer
+```
+
+A minimal self-signed CA issuer for the `issuerRef` approach:
 
 ```yaml
 apiVersion: cert-manager.io/v1
@@ -60,7 +105,12 @@ spec:
     secretName: openbao-ca-tls
 ```
 
-Then install the chart with TLS enabled:
+The certificate duration is taken from `certManager.duration` when set,
+otherwise from `certManager.durationDays` (`durationDays * 24h`, seaweedfs
+convention). Extra SANs can be supplied either via `certManager.extraSans` /
+`certManager.extraIpSans` (lists) or the seaweedfs-compatible
+`certManager.subjectAlternativeName.additionalDnsNames` /
+`additionalIpAddresses`; all of them are merged into the certificate.
 
 ```yaml
 global:
@@ -71,14 +121,15 @@ server:
     source: certManager
     tlsMinVersion: tls12
     certManager:
-      issuerRef:
-        name: openbao-ca-issuer
-        kind: Issuer
-      duration: 8760h
+      generateIssuer: true
+      durationDays: 365
       renewBefore: 720h
       # Extra SANs (e.g. an ingress hostname):
       extraSans:
         - vault.example.com
+      subjectAlternativeName:
+        additionalDnsNames:
+          - vault.internal.example.com
 ```
 
 The chart creates a `Certificate` named `<release>-openbao-tls` whose SANs
@@ -88,7 +139,44 @@ services. cert-manager writes the signed material into the secret
 `<release>-openbao-tls`, which the chart mounts into the server pod at
 `server.tls.mountPath` (default `/openbao/tls`).
 
-### Option B: existing secret
+> Note on the private key: OpenBao defaults to `ECDSA`/`256`, which is a
+> deliberate deviation from the seaweedfs chart (RSA 2048). Set
+> `server.tls.certManager.privateKey` to `{algorithm: RSA, encoding: PKCS1,
+> size: 2048}` if strict parity with seaweedfs is required.
+
+### Option B: inline certificate (rawCerts)
+
+Supply PEM material directly. The chart creates a `kubernetes.io/tls` secret
+(via Helm `pre-install`/`pre-upgrade` hooks) named `<release>-openbao-tls`:
+
+```yaml
+global:
+  tlsDisable: false
+
+server:
+  tls:
+    source: rawCerts
+    certs:
+      crt: |
+        -----BEGIN CERTIFICATE-----
+        ...
+        -----END CERTIFICATE-----
+      key: |
+        -----BEGIN PRIVATE KEY-----
+        ...
+        -----END PRIVATE KEY-----
+      # Optional: provide the CA so BAO_CACERT/probes/metrics can verify it.
+      ca: |
+        -----BEGIN CERTIFICATE-----
+        ...
+        -----END CERTIFICATE-----
+```
+
+If `certs.ca` is omitted, there is no `ca.crt` for verification; set
+`serverTelemetry.serviceMonitor.insecureSkipVerify: true` for metrics scraping
+in that case.
+
+### Option C: existing secret
 
 If you manage certificates yourself, create a `kubernetes.io/tls` secret that
 also carries the CA under `ca.crt`, and reference it:
@@ -107,8 +195,37 @@ server:
     caKey: ca.crt
 ```
 
-In this mode the chart does **not** create a cert-manager `Certificate`; it only
-mounts the secret and wires up `BAO_CACERT`.
+In this mode the chart does **not** create a cert-manager `Certificate` or a
+secret; it only mounts the existing secret and wires up `BAO_CACERT`.
+
+### Gateway API: re-encrypt vs passthrough
+
+When exposing OpenBao through the Gateway API, the two TLS termination modes
+follow the same convention as seaweedfs:
+
+- **Re-encrypt** — the gateway terminates the client TLS and opens a fresh TLS
+  connection to the pod. Enable it with `server.gateway.tlsPolicy.enabled: true`
+  (a `BackendTLSPolicy` is created). By default the policy validates the pod
+  certificate against the CA in the chart's TLS secret (`<release>-openbao-tls`,
+  key `ca.crt`); override with `server.gateway.tlsPolicy.validation`. Use this
+  with `source: certManager`.
+
+  ```text
+  Client ---HTTPS---> Gateway API ---HTTPS---> Pod
+  ```
+
+- **Passthrough** — the gateway forwards the encrypted stream unchanged and
+  OpenBao terminates TLS. Enable it with `server.gateway.tlsRoute.enabled: true`
+  (a `TLSRoute` is created). Use this with `source: rawCerts` or
+  `existingSecret`.
+
+  ```text
+  Client ---HTTPS---> Pod
+  ```
+
+Both resources are only rendered when the corresponding Gateway API CRD
+(`TLSRoute` / `BackendTLSPolicy`) is installed in the cluster.
+
 
 ### TLS version and cipher suites
 
