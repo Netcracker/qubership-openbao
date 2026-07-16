@@ -1,11 +1,8 @@
 {{- if eq (.Values.server.dev_mode.enabled | toString) "true" }}
-{{- $sealToken := .Values.server.dev_mode.sealToken | default "" -}}
-{{- if not $sealToken }}
-{{- $sealToken = randAlphaNum 64 | lower -}}
-{{- end }}
+{{- $devKey := randAlphaNum 64 | lower -}}
 apiVersion: v1
 data:
-  current-key: {{ $sealToken | b64enc | quote }}
+  current-key: {{ $devKey | b64enc | quote }}
 kind: Secret
 metadata:
   name: bao-static-unseal-key

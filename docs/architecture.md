@@ -160,7 +160,6 @@ The chart deploys the following Kubernetes resources
 
 ### Security & network
 - **NetworkPolicy** (`server-network-policy.yaml`).
-- **PodSecurityPolicy** (`server-psp*.yaml`) — gated by `global.psp`.
 
 > **Not deployed in this distribution:** the Agent Injector (Deployment,
 > MutatingWebhookConfiguration, RBAC, PDB, certs) and the CSI provider

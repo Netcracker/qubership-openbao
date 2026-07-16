@@ -14,11 +14,6 @@ global:
 server:
   dev_mode:
     enabled: true
-    # Static unseal key stored in the bao-static-unseal-key secret.
-    # If empty, a random key is generated.
-    sealToken: ""
-    # Root token used by the bootstrap.
-    devRootToken: "root"
 
   # Persistent storage for the file backend (data survives restarts).
   dataStorage:

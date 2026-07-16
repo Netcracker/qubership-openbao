@@ -15,7 +15,6 @@ the most commonly used parameters.
 | `global.tlsDisable` | Disable end-to-end TLS transport (set `false` to enable TLS) | `true` |
 | `global.externalBaoAddr` | External OpenBao address; setting it disables the server (external mode) | `""` |
 | `global.openshift` | Deploy to OpenShift (use `server.route` for exposure) | `false` |
-| `global.psp.enable` | Create a PodSecurityPolicy for pods | `false` |
 | `global.serverTelemetry.prometheusOperator` | Enable Prometheus Operator integration | `false` |
 | `server.enabled` | Install the OpenBao server (`"-"` follows `global.enabled`) | `"-"` |
 | `server.image.registry` | Server image registry | `"quay.io"` |
@@ -49,8 +48,6 @@ the most commonly used parameters.
 | `server.auditStorage.enabled` | Create the audit-log PVC | `false` |
 | `server.auditStorage.size` | Audit PVC size | `10Gi` |
 | `server.dev_mode.enabled` | Run in persistent dev mode (file backend on the data PVC, auto-init/auto-unseal) — shipped default | `true` |
-| `server.dev_mode.sealToken` | Static unseal key stored in `bao-static-unseal-key` (random if empty) | `""` |
-| `server.dev_mode.devRootToken` | Root token used by the dev bootstrap | `"root"` |
 | `server.dev_mode.config` | HCL config for the persistent dev server (file backend) | *(multi-line)* |
 | `server.standalone.enabled` | Run in standalone mode (file backend) | `"-"` |
 | `server.ha.enabled` | Run in HA mode | `false` |

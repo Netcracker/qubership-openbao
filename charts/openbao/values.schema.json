@@ -26,17 +26,6 @@
                 "openshift": {
                     "type": "boolean"
                 },
-                "psp": {
-                    "type": "object",
-                    "properties": {
-                        "annotations": {
-                            "type": "string"
-                        },
-                        "enable": {
-                            "type": "boolean"
-                        }
-                    }
-                },
                 "serverTelemetry": {
                     "type": "object",
                     "properties": {
@@ -127,12 +116,6 @@
                     "properties": {
                         "enabled": {
                             "type": "boolean"
-                        },
-                        "sealToken": {
-                            "type": "string"
-                        },
-                        "devRootToken": {
-                            "type": "string"
                         },
                         "config": {
                             "type": "string"
