@@ -1,4 +1,69 @@
-# Configuration
+[[_TOC_]]
+
+## OpenBao Helm Chart Parameters
+
+Ready-made value files are provided in the [examples](/examples) directory. The
+full, auto-generated values table lives in
+[`charts/openbao/README.md`](/charts/openbao/README.md); the table below covers
+the most commonly used parameters.
+
+| Key | Description | Default Value |
+|-----|-------------|---------------|
+| `global.enabled` | Master switch enabling/disabling all chart components | `true` |
+| `global.namespace` | Namespace to deploy to (defaults to the Helm namespace) | `""` |
+| `global.imagePullSecrets` | Image pull secrets for private registries | `[]` |
+| `global.tlsDisable` | Disable end-to-end TLS transport (set `false` to enable TLS) | `true` |
+| `global.externalBaoAddr` | External OpenBao address; setting it disables the server (external mode) | `""` |
+| `global.openshift` | Deploy to OpenShift (use `server.route` for exposure) | `false` |
+| `global.psp.enable` | Create a PodSecurityPolicy for pods | `false` |
+| `global.serverTelemetry.prometheusOperator` | Enable Prometheus Operator integration | `false` |
+| `server.enabled` | Install the OpenBao server (`"-"` follows `global.enabled`) | `"-"` |
+| `server.image.registry` | Server image registry | `"quay.io"` |
+| `server.image.repository` | Server image repository | `"quay.io/openbao/openbao"` |
+| `server.image.tag` | Server image tag | `"2.5"` |
+| `server.image.pullPolicy` | Server image pull policy | `IfNotPresent` |
+| `server.updateStrategyType` | StatefulSet update strategy | `"OnDelete"` |
+| `server.podManagementPolicy` | StatefulSet pod management policy | `"OrderedReady"` |
+| `server.logLevel` | Server log level (trace/debug/info/warn/error) | `""` |
+| `server.logFormat` | Server log format (standard/json) | `""` |
+| `server.resources` | Resource requests/limits for server pods | `{}` |
+| `server.configAnnotation` | Add a config-checksum annotation to trigger rollout on config change | `false` |
+| `server.ingress.enabled` | Create a Kubernetes Ingress | `false` |
+| `server.route.enabled` | Create an OpenShift Route (OpenShift only) | `false` |
+| `server.route.tls.termination` | OpenShift Route TLS termination | `passthrough` |
+| `server.gateway.httpRoute.enabled` | Create a Gateway API HTTPRoute | `false` |
+| `server.gateway.tlsRoute.enabled` | Create a Gateway API TLSRoute (passthrough) | `false` |
+| `server.gateway.tlsPolicy.enabled` | Create a Gateway API BackendTLSPolicy (re-encrypt) | `false` |
+| `server.authDelegator.enabled` | Bind `system:auth-delegator` for Kubernetes auth | `true` |
+| `server.tls.source` | TLS certificate source: `certManager`, `rawCerts`, `existingSecret` | `certManager` |
+| `server.tls.secretName` | Name of the TLS secret (defaults to `<fullname>-tls`) | `""` |
+| `server.tls.tlsMinVersion` | Minimum TLS version (tls10/tls11/tls12/tls13) | `tls12` |
+| `server.tls.certManager.generateIssuer` | Chart creates a self-signed Issuer | `false` |
+| `server.tls.certManager.clusterIssuerName` | Use an existing ClusterIssuer | `""` |
+| `server.service.enabled` | Create the client Service | `true` |
+| `server.service.port` | Client Service port | `8200` |
+| `server.dataStorage.enabled` | Create the data PVC (file/raft backends) | `true` |
+| `server.dataStorage.size` | Data PVC size | `10Gi` |
+| `server.dataStorage.mountPath` | Data mount path | `/openbao/data` |
+| `server.dataStorage.storageClass` | Data PVC StorageClass (null = default) | `null` |
+| `server.auditStorage.enabled` | Create the audit-log PVC | `false` |
+| `server.auditStorage.size` | Audit PVC size | `10Gi` |
+| `server.dev_mode.enabled` | Run in dev mode (in-memory, no unseal) — shipped default | `true` |
+| `server.dev_mode.sealToken` | Dev unseal token (random if empty) | `""` |
+| `server.standalone.enabled` | Run in standalone mode (file backend) | `"-"` |
+| `server.ha.enabled` | Run in HA mode | `false` |
+| `server.ha.replicas` | HA replica count | `3` |
+| `server.ha.raft.enabled` | Use integrated Raft storage in HA | `false` |
+| `server.ha.disruptionBudget.enabled` | Create a PodDisruptionBudget in HA | `true` |
+| `server.serviceAccount.create` | Create a ServiceAccount for the server | `true` |
+| `ui.enabled` | Enable the OpenBao web UI service | `false` |
+| `ui.serviceType` | UI Service type (ClusterIP/NodePort/LoadBalancer) | `"ClusterIP"` |
+| `ui.externalPort` | UI Service port | `8200` |
+| `serverTelemetry.serviceMonitor.enabled` | Create a Prometheus ServiceMonitor | `false` |
+| `serverTelemetry.prometheusRules.enabled` | Create PrometheusRule alerts | `false` |
+| `serverTelemetry.grafanaDashboard.enabled` | Create the Grafana dashboard ConfigMap | `false` |
+| `snapshotAgent.enabled` | Enable the Raft snapshot backup CronJob | `false` |
+| `snapshotAgent.schedule` | Snapshot CronJob schedule | `"*/15 * * * *"` |
 
 ## End-to-end TLS
 

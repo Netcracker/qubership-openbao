@@ -1,0 +1,18 @@
+# Example values: dev mode (no unseal/init).
+# WARNING: all data is lost on restart. For experimentation only.
+#
+# Install:
+#   helm install openbao ./charts/openbao -n openbao --create-namespace -f examples/dev.yaml
+
+global:
+  tlsDisable: true
+
+server:
+  dev_mode:
+    enabled: true
+    # If empty, a random unseal token is generated.
+    sealToken: ""
+
+ui:
+  enabled: true
+  serviceType: ClusterIP

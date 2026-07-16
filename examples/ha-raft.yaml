@@ -1,0 +1,57 @@
+# Example values: HA mode with integrated Raft storage (recommended for production).
+# Multi-replica cluster; servers start sealed and must be initialized/unsealed.
+#
+# Install:
+#   helm install openbao ./charts/openbao -n openbao --create-namespace -f examples/ha-raft.yaml
+#
+# After install, initialize the leader and join/unseal the remaining replicas:
+#   kubectl exec -n openbao openbao-0 -- bao operator init
+#   kubectl exec -n openbao openbao-0 -- bao operator unseal <key-share>
+
+global:
+  tlsDisable: false
+
+server:
+  dev_mode:
+    enabled: false
+
+  ha:
+    enabled: true
+    replicas: 3
+    raft:
+      enabled: true
+    disruptionBudget:
+      enabled: true
+      maxUnavailable: 1
+
+  dataStorage:
+    enabled: true
+    size: 10Gi
+    mountPath: /openbao/data
+    # storageClass: my-storage-class
+
+  resources:
+    requests:
+      memory: 512Mi
+      cpu: 500m
+    limits:
+      memory: 512Mi
+      cpu: 500m
+
+  # End-to-end TLS via cert-manager. In HA, the certificate SANs cover the
+  # headless -internal service, per-pod wildcard DNS and the active/standby
+  # services automatically.
+  tls:
+    source: certManager
+    tlsMinVersion: tls12
+    certManager:
+      generateIssuer: true
+      durationDays: 365
+      renewBefore: 720h
+
+ui:
+  enabled: true
+
+serverTelemetry:
+  serviceMonitor:
+    enabled: false

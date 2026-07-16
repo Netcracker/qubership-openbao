@@ -1,4 +1,4 @@
-# openbao
+﻿# openbao
 
 ![Version: 0.28.3](https://img.shields.io/badge/Version-0.28.3-informational?style=flat-square) ![AppVersion: v2.5.4](https://img.shields.io/badge/AppVersion-v2.5.4-informational?style=flat-square)
 
@@ -24,53 +24,6 @@ Kubernetes: `>= 1.30.0-0`
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| csi.agent.enabled | bool | `true` |  |
-| csi.agent.extraArgs | list | `[]` |  |
-| csi.agent.image.pullPolicy | string | `"IfNotPresent"` | image pull policy to use for agent image. if tag is "latest", set to "Always" |
-| csi.agent.image.registry | string | `"quay.io"` | image registry to use for agent image |
-| csi.agent.image.repository | string | `"openbao/openbao"` | image repo to use for agent image |
-| csi.agent.image.tag | string | `""` | image tag to use for agent image - defaults to chart appVersion |
-| csi.agent.logFormat | string | `"standard"` |  |
-| csi.agent.logLevel | string | `"info"` |  |
-| csi.agent.resources | object | `{}` |  |
-| csi.daemonSet.annotations | object | `{}` |  |
-| csi.daemonSet.endpoint | string | `"/provider/openbao.sock"` |  |
-| csi.daemonSet.extraLabels | object | `{}` |  |
-| csi.daemonSet.kubeletRootDir | string | `"/var/lib/kubelet"` |  |
-| csi.daemonSet.providersDir | string | `"/etc/kubernetes/secrets-store-csi-providers"` |  |
-| csi.daemonSet.securityContext.container | object | `{}` |  |
-| csi.daemonSet.securityContext.pod | object | `{}` |  |
-| csi.daemonSet.updateStrategy.maxUnavailable | string | `""` |  |
-| csi.daemonSet.updateStrategy.type | string | `"RollingUpdate"` |  |
-| csi.debug | bool | `false` |  |
-| csi.enabled | bool | `false` | True if you want to install an openbao-csi-provider daemonset.  Requires installing the secrets-store-csi-driver separately, see: https://secrets-store-csi-driver.sigs.k8s.io/getting-started/installation  With the driver and provider installed, you can mount OpenBao secrets into volumes similar to the OpenBao Agent injector, and you can also sync those secrets into Kubernetes secrets. |
-| csi.extraArgs | list | `[]` |  |
-| csi.hmacSecretName | string | `""` |  |
-| csi.image.pullPolicy | string | `"IfNotPresent"` | image pull policy to use for csi image. if tag is "latest", set to "Always" |
-| csi.image.registry | string | `"quay.io"` | image registry to use for csi image |
-| csi.image.repository | string | `"openbao/openbao-csi-provider"` | image repo to use for csi image |
-| csi.image.tag | string | `"2.0.2"` | image tag to use for csi image |
-| csi.livenessProbe.failureThreshold | int | `2` |  |
-| csi.livenessProbe.initialDelaySeconds | int | `5` |  |
-| csi.livenessProbe.periodSeconds | int | `5` |  |
-| csi.livenessProbe.successThreshold | int | `1` |  |
-| csi.livenessProbe.timeoutSeconds | int | `3` |  |
-| csi.pod.affinity | object | `{}` |  |
-| csi.pod.annotations | object | `{}` |  |
-| csi.pod.extraLabels | object | `{}` |  |
-| csi.pod.nodeSelector | object | `{}` |  |
-| csi.pod.tolerations | list | `[]` |  |
-| csi.priorityClassName | string | `""` |  |
-| csi.readinessProbe.failureThreshold | int | `2` |  |
-| csi.readinessProbe.initialDelaySeconds | int | `5` |  |
-| csi.readinessProbe.periodSeconds | int | `5` |  |
-| csi.readinessProbe.successThreshold | int | `1` |  |
-| csi.readinessProbe.timeoutSeconds | int | `3` |  |
-| csi.resources | object | `{}` |  |
-| csi.serviceAccount.annotations | object | `{}` |  |
-| csi.serviceAccount.extraLabels | object | `{}` |  |
-| csi.volumeMounts | list | `[]` | volumeMounts is a list of volumeMounts for the main server container. These are rendered via toYaml rather than pre-processed like the extraVolumes value. The purpose is to make it easy to share volumes between containers. |
-| csi.volumes | list | `[]` | volumes is a list of volumes made available to all containers. These are rendered via toYaml rather than pre-processed like the extraVolumes value. The purpose is to make it easy to share volumes between containers. |
 | extraObjects | list | `[]` |  |
 | global.enabled | bool | `true` | enabled is the master enabled switch. Setting this to true or false will enable or disable all the components within this chart by default. |
 | global.externalBaoAddr | string | `""` | External openbao server address for the injector and CSI provider to use. Setting this will disable deployment of an OpenBao server. |
@@ -82,79 +35,6 @@ Kubernetes: `>= 1.30.0-0`
 | global.psp.annotations | string | `"seccomp.security.alpha.kubernetes.io/allowedProfileNames: docker/default,runtime/default\napparmor.security.beta.kubernetes.io/allowedProfileNames: runtime/default\nseccomp.security.alpha.kubernetes.io/defaultProfileName:  runtime/default\napparmor.security.beta.kubernetes.io/defaultProfileName:  runtime/default\n"` | Annotation for PodSecurityPolicy. This is a multi-line templated string map, and can also be set as YAML. |
 | global.serverTelemetry.prometheusOperator | bool | `false` | Enable integration with the Prometheus Operator See the top level serverTelemetry section below before enabling this feature. |
 | global.tlsDisable | bool | `true` | TLS for end-to-end encrypted transport |
-| injector.affinity | string | `"podAntiAffinity:\n  requiredDuringSchedulingIgnoredDuringExecution:\n    - labelSelector:\n        matchLabels:\n          app.kubernetes.io/name: {{ template \"openbao.name\" . }}-agent-injector\n          app.kubernetes.io/instance: \"{{ .Release.Name }}\"\n          component: webhook\n      topologyKey: kubernetes.io/hostname\n"` |  |
-| injector.agentDefaults.cpuLimit | string | `"500m"` |  |
-| injector.agentDefaults.cpuRequest | string | `"250m"` |  |
-| injector.agentDefaults.memLimit | string | `"128Mi"` |  |
-| injector.agentDefaults.memRequest | string | `"64Mi"` |  |
-| injector.agentDefaults.template | string | `"map"` |  |
-| injector.agentDefaults.templateConfig.exitOnRetryFailure | bool | `true` |  |
-| injector.agentDefaults.templateConfig.staticSecretRenderInterval | string | `""` |  |
-| injector.agentImage | object | `{"pullPolicy":"IfNotPresent","registry":"quay.io","repository":"openbao/openbao","tag":""}` | agentImage sets the repo and tag of the OpenBao image to use for the OpenBao Agent containers.  This should be set to the official OpenBao image.  OpenBao 1.3.1+ is required. |
-| injector.agentImage.pullPolicy | string | `"IfNotPresent"` | image pull policy to use for agent image. if tag is "latest", set to "Always" |
-| injector.agentImage.registry | string | `"quay.io"` | image registry to use for agent image |
-| injector.agentImage.repository | string | `"openbao/openbao"` | image repo to use for agent image |
-| injector.agentImage.tag | string | `""` | image tag to use for agent image - defaults to chart appVersion |
-| injector.annotations | object | `{}` |  |
-| injector.authPath | string | `"auth/kubernetes"` |  |
-| injector.certs.caBundle | string | `""` |  |
-| injector.certs.certName | string | `"tls.crt"` |  |
-| injector.certs.keyName | string | `"tls.key"` |  |
-| injector.certs.secretName | string | `nil` |  |
-| injector.enabled | string | `"-"` | True if you want to enable openbao agent injection. @default: global.enabled |
-| injector.externalBaoAddr | string | `""` | External openbao server address for the injector to use. |
-| injector.externalVaultAddr | string | `""` | Deprecated: Please use injector.externalBaoAddr instead. |
-| injector.extraEnvironmentVars | object | `{}` |  |
-| injector.extraLabels | object | `{}` |  |
-| injector.failurePolicy | string | `"Ignore"` |  |
-| injector.hostNetwork | bool | `false` |  |
-| injector.image.pullPolicy | string | `"IfNotPresent"` | image pull policy to use for k8s image. if tag is "latest", set to "Always" |
-| injector.image.registry | string | `"docker.io"` | image registry to use for k8s image |
-| injector.image.repository | string | `"hashicorp/vault-k8s"` | image repo to use for k8s image |
-| injector.image.tag | string | `"1.7.2"` | image tag to use for k8s image |
-| injector.leaderElector | object | `{"enabled":true}` | If multiple replicas are specified, by default a leader will be determined so that only one injector attempts to create TLS certificates. |
-| injector.livenessProbe.failureThreshold | int | `2` | When a probe fails, Kubernetes will try failureThreshold times before giving up |
-| injector.livenessProbe.initialDelaySeconds | int | `5` | Number of seconds after the container has started before probe initiates |
-| injector.livenessProbe.periodSeconds | int | `2` | How often (in seconds) to perform the probe |
-| injector.livenessProbe.successThreshold | int | `1` | Minimum consecutive successes for the probe to be considered successful after having failed |
-| injector.livenessProbe.timeoutSeconds | int | `5` | Number of seconds after which the probe times out. |
-| injector.logFormat | string | `"standard"` | Configures the log format of the injector. Supported log formats: "standard", "json". |
-| injector.logLevel | string | `"info"` | Configures the log verbosity of the injector. Supported log levels include: trace, debug, info, warn, error |
-| injector.metrics | object | `{"enabled":false}` | If true, will enable a node exporter metrics endpoint at /metrics. |
-| injector.namespaceSelector | object | `{}` |  |
-| injector.nodeSelector | object | `{}` |  |
-| injector.objectSelector | object | `{}` |  |
-| injector.podDisruptionBudget | object | `{}` |  |
-| injector.port | int | `8080` | Configures the port the injector should listen on |
-| injector.priorityClassName | string | `""` |  |
-| injector.readinessProbe.failureThreshold | int | `2` | When a probe fails, Kubernetes will try failureThreshold times before giving up |
-| injector.readinessProbe.initialDelaySeconds | int | `5` | Number of seconds after the container has started before probe initiates |
-| injector.readinessProbe.periodSeconds | int | `2` | How often (in seconds) to perform the probe |
-| injector.readinessProbe.successThreshold | int | `1` | Minimum consecutive successes for the probe to be considered successful after having failed |
-| injector.readinessProbe.timeoutSeconds | int | `5` | Number of seconds after which the probe times out. |
-| injector.replicas | int | `1` |  |
-| injector.resources | object | `{}` |  |
-| injector.revokeOnShutdown | bool | `false` |  |
-| injector.securityContext.container | object | `{}` |  |
-| injector.securityContext.pod | object | `{}` |  |
-| injector.service.annotations | object | `{}` |  |
-| injector.service.extraLabels | object | `{}` |  |
-| injector.serviceAccount.annotations | object | `{}` |  |
-| injector.startupProbe.failureThreshold | int | `12` | When a probe fails, Kubernetes will try failureThreshold times before giving up |
-| injector.startupProbe.initialDelaySeconds | int | `5` | Number of seconds after the container has started before probe initiates |
-| injector.startupProbe.periodSeconds | int | `5` | How often (in seconds) to perform the probe |
-| injector.startupProbe.successThreshold | int | `1` | Minimum consecutive successes for the probe to be considered successful after having failed |
-| injector.startupProbe.timeoutSeconds | int | `5` | Number of seconds after which the probe times out. |
-| injector.strategy | object | `{}` |  |
-| injector.tolerations | list | `[]` |  |
-| injector.topologySpreadConstraints | list | `[]` |  |
-| injector.webhook.annotations | object | `{}` |  |
-| injector.webhook.failurePolicy | string | `"Ignore"` |  |
-| injector.webhook.matchPolicy | string | `"Exact"` |  |
-| injector.webhook.namespaceSelector | object | `{}` |  |
-| injector.webhook.objectSelector | string | `"matchExpressions:\n- key: app.kubernetes.io/name\n  operator: NotIn\n  values:\n  - {{ template \"openbao.name\" . }}-agent-injector\n"` |  |
-| injector.webhook.timeoutSeconds | int | `30` |  |
-| injector.webhookAnnotations | object | `{}` |  |
 | server.affinity | string | `"podAntiAffinity:\n  requiredDuringSchedulingIgnoredDuringExecution:\n    - labelSelector:\n        matchLabels:\n          app.kubernetes.io/name: {{ template \"openbao.name\" . }}\n          app.kubernetes.io/instance: \"{{ .Release.Name }}\"\n          component: server\n      topologyKey: kubernetes.io/hostname\n"` |  |
 | server.annotations | object | `{}` |  |
 | server.auditStorage.accessMode | string | `"ReadWriteOnce"` |  |
@@ -173,8 +53,8 @@ Kubernetes: `>= 1.30.0-0`
 | server.dataStorage.mountPath | string | `"/openbao/data"` |  |
 | server.dataStorage.size | string | `"10Gi"` |  |
 | server.dataStorage.storageClass | string | `nil` |  |
-| server.dev.devRootToken | string | `"root"` |  |
-| server.dev.enabled | bool | `false` |  |
+| server.dev_mode.sealToken | string | `""` | Dev-mode static unseal token. If empty, a random token is generated. |
+| server.dev_mode.enabled | bool | `true` | Run OpenBao in dev mode (in-memory, no unseal/init). Shipped default; experimentation only. |
 | server.enabled | string | `"-"` |  |
 | server.extraArgs | string | `""` | extraArgs is a string containing additional OpenBao server arguments. |
 | server.extraContainers | string | `nil` |  |
