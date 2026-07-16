@@ -1,17 +1,31 @@
-# Example values: dev mode (no unseal/init).
-# WARNING: all data is lost on restart. For experimentation only.
+# Example values: persistent dev mode.
+# Uses the `file` storage backend on the data PVC, so data survives pod
+# restarts. The server is auto-initialized on first boot and auto-unsealed on
+# every (re)start (unseal keys are persisted on the data volume).
+# For development / testing only, not production.
 #
 # Install:
 #   helm install openbao ./charts/openbao -n openbao --create-namespace -f examples/dev.yaml
 
 global:
+  # Dev mode always serves plain HTTP; keep TLS disabled.
   tlsDisable: true
 
 server:
   dev_mode:
     enabled: true
-    # If empty, a random unseal token is generated.
+    # Static unseal key stored in the bao-static-unseal-key secret.
+    # If empty, a random key is generated.
     sealToken: ""
+    # Root token used by the bootstrap.
+    devRootToken: "root"
+
+  # Persistent storage for the file backend (data survives restarts).
+  dataStorage:
+    enabled: true
+    size: 10Gi
+    mountPath: /openbao/data
+    # storageClass: my-storage-class
 
 ui:
   enabled: true

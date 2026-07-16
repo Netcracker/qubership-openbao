@@ -5,9 +5,10 @@
 You can deploy OpenBao in one of the following topologies (the mode is derived
 from the switches described in [architecture.md](/docs/architecture.md#deployment-modes)):
 
-- **Dev mode** (`server.dev_mode.enabled: true`, the shipped default) – an
-  openbao server with auto unseal mode. 
-  Experimentation only.
+- **Dev mode** (`server.dev_mode.enabled: true`, the shipped default) – a
+  persistent development server. It uses the `file` storage backend on the data
+  PVC (`server.dataStorage`), so data survives restarts, and is auto-initialized
+  and auto-unsealed. Development/testing only.
 - **Standalone mode** (`server.standalone.enabled: "-"`) – a single-replica
   server using the `file` storage backend on a PVC. Not highly available.
 - **HA mode with integrated Raft** (`server.ha.enabled: true` +
@@ -96,9 +97,12 @@ Ready-made value files for the common topologies are provided under
 
 ## Initialization and unseal
 
-- **Dev mode** requires no action: the server starts unsealed using the static
-  unseal-key secret `bao-static-unseal-key` (`server.dev_mode.sealToken`, random
-  if empty).
+- **Dev mode** requires no manual action. The server uses the `file` backend on
+  the data PVC and therefore starts sealed, but a `postStart` bootstrap
+  automatically initializes it on first boot and auto-unseals it on every
+  (re)start. The generated unseal key and root token are persisted on the data
+  volume (`<mountPath>/bootstrap-keys.json`). Because data is on a PVC, secrets
+  survive pod restarts.
 - **Standalone / HA** servers start **sealed** and must be initialized and
   unsealed after install, for example:
 

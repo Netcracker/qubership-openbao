@@ -28,8 +28,9 @@ Key capabilities:
 > **Distribution note.** Unlike upstream, this distribution does **not** deploy
 > the Agent Injector or the Secrets Store CSI provider. Those templates are kept
 > under `not-relevant/` and are not rendered. The shipped default is **dev
-> mode** (`server.dev_mode.enabled: true`), which is only suitable for
-> experimentation.
+> mode** (`server.dev_mode.enabled: true`). In this distribution dev mode is a
+> *persistent* development server (file backend on a PVC, auto-init and
+> auto-unseal); it is intended for development/testing, not production.
 
 # Architecture schema
 
@@ -90,7 +91,7 @@ evaluated in this precedence order:
 | `external` | `global.externalBaoAddr` set, or `server.enabled: false` | No OpenBao server is deployed. Other resources point at an external OpenBao address. |
 | `ha` | `server.ha.enabled: true` | Highly-available multi-replica cluster (`server.ha.replicas`, default `3`). Storage backend is **Consul** by default (`server.ha.config`) or **integrated Raft** when `server.ha.raft.enabled: true` (`server.ha.raft.config`). |
 | `standalone` | `server.standalone.enabled: true` or `"-"` (default when nothing else selected) | Single-replica, non-HA server using the `file` storage backend at `/openbao/data`. Should not be scaled past one replica. |
-| `dev` | `server.dev_mode.enabled: true` (**shipped default**) | Dev server. No init/unseal; uses a static unseal-key secret (`bao-static-unseal-key`). **All data is lost on restart** — experimentation only. |
+| `dev` | `server.dev_mode.enabled: true` (**shipped default**) | Persistent development server. Uses the `file` storage backend on the data PVC (`server.dataStorage`) so **data survives restarts**; auto-initialized on first boot and auto-unsealed on every start. Development/testing only. |
 
 - Replica count is resolved by `openbao.replicas`: `1` for `standalone`/`dev`,
   `server.ha.replicas` (default `3`) for `ha`.
@@ -181,6 +182,7 @@ The chart deploys the following Kubernetes resources
   `https://<pod>:8201` regardless of the client listener scheme.
 
 ### Storage
+- `dev` uses the `file` backend on the data PVC (`/openbao/data`), so dev data persists across restarts.
 - `standalone` uses the `file` backend on the data PVC (`/openbao/data`).
 - `ha` + `raft` uses integrated Raft storage on the same PVC across replicas.
 - `ha` (default) uses an external Consul cluster as the storage backend.

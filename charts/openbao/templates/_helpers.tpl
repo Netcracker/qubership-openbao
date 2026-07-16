@@ -220,6 +220,11 @@ extra volumes the user may have specified (such as a secret with TLS).
           configMap:
             name: {{ template "openbao.fullname" . }}-config
   {{ end }}
+  {{- if and (eq .mode "dev") (.Values.server.dev_mode.config) }}
+        - name: config
+          configMap:
+            name: {{ template "openbao.fullname" . }}-config
+  {{ end }}
   {{- if and (ne .mode "dev") (eq (include "openbao.tlsEnabled" .) "true") }}
         - name: tls
           secret:
@@ -258,7 +263,7 @@ file with IP addresses to make the out of box experience easier
 for users looking to use this chart with Consul Helm.
 */}}
 {{- define "openbao.args" -}}
-  {{ if or (eq .mode "standalone") (eq .mode "ha") }}
+  {{ if or (eq .mode "standalone") (eq .mode "ha") (eq .mode "dev") }}
           - |
             cp /openbao/config/extraconfig-from-values.hcl /tmp/storageconfig.hcl;
             [ -n "${HOST_IP}" ] && sed -Ei "s|HOST_IP|${HOST_IP?}|g" /tmp/storageconfig.hcl;
@@ -268,9 +273,6 @@ for users looking to use this chart with Consul Helm.
             [ -n "${TRANSIT_ADDR}" ] && sed -Ei "s|TRANSIT_ADDR|${TRANSIT_ADDR?}|g" /tmp/storageconfig.hcl;
             [ -n "${RAFT_ADDR}" ] && sed -Ei "s|RAFT_ADDR|${RAFT_ADDR?}|g" /tmp/storageconfig.hcl;
             /usr/local/bin/docker-entrypoint.sh bao server -config=/tmp/storageconfig.hcl {{ .Values.server.extraArgs }}
-   {{ else if eq .mode "dev" }}
-          - |
-            /usr/local/bin/docker-entrypoint.sh bao server -dev {{ .Values.server.extraArgs }}
   {{ end }}
 {{- end -}}
 
@@ -278,12 +280,6 @@ for users looking to use this chart with Consul Helm.
 Set's additional environment variables based on the mode.
 */}}
 {{- define "openbao.envs" -}}
-  {{ if eq .mode "dev" }}
-            - name: VAULT_DEV_ROOT_TOKEN_ID
-              value: {{ .Values.server.dev.devRootToken }}
-            - name: VAULT_DEV_LISTEN_ADDRESS
-              value: "[::]:8200"
-  {{ end }}
 {{- end -}}
 
 {{/*
@@ -295,13 +291,17 @@ based on the mode configured.
             - name: audit
               mountPath: {{ .Values.server.auditStorage.mountPath }}
   {{ end }}
-  {{ if or (eq .mode "standalone") (and (eq .mode "ha") (eq (.Values.server.ha.raft.enabled | toString) "true"))  }}
+  {{ if or (eq .mode "standalone") (eq .mode "dev") (and (eq .mode "ha") (eq (.Values.server.ha.raft.enabled | toString) "true"))  }}
     {{ if eq (.Values.server.dataStorage.enabled | toString) "true" }}
             - name: data
               mountPath: {{ .Values.server.dataStorage.mountPath }}
     {{ end }}
   {{ end }}
   {{ if and (ne .mode "dev") (or (.Values.server.standalone.config)  (.Values.server.ha.config)) }}
+            - name: config
+              mountPath: /openbao/config
+  {{ end }}
+  {{ if and (eq .mode "dev") (.Values.server.dev_mode.config) }}
             - name: config
               mountPath: /openbao/config
   {{ end }}
@@ -373,6 +373,24 @@ storage might be desired by the user.
         storageClassName: {{ .Values.server.auditStorage.storageClass }}
           {{- end }}
       {{ end }}
+  {{- else if and (eq .mode "dev") (eq (.Values.server.dataStorage.enabled | toString) "true") }}
+  # Persistent dev mode: create the data PVC so file storage survives restarts.
+  volumeClaimTemplates:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: data
+        {{- include "openbao.dataVolumeClaim.annotations" . | nindent 6 }}
+        {{- include "openbao.dataVolumeClaim.labels" . | nindent 6 }}
+      spec:
+        accessModes:
+          - {{ .Values.server.dataStorage.accessMode | default "ReadWriteOnce" }}
+        resources:
+          requests:
+            storage: {{ .Values.server.dataStorage.size }}
+          {{- if .Values.server.dataStorage.storageClass }}
+        storageClassName: {{ .Values.server.dataStorage.storageClass }}
+          {{- end }}
   {{ end }}
 {{- end -}}
 
@@ -1240,7 +1258,9 @@ Supported inputs are Values.ui
 config file from values
 */}}
 {{- define "openbao.config" -}}
-  {{- if or (eq .mode "ha") (eq .mode "standalone") }}
+  {{- if eq .mode "dev" }}
+    {{ tpl .Values.server.dev_mode.config . | nindent 4 | trim }}
+  {{- else if or (eq .mode "ha") (eq .mode "standalone") }}
   {{- $type := typeOf (index .Values.server .mode).config }}
   {{- if eq $type "string" }}
   {{- if eq .mode "standalone" }}

@@ -218,6 +218,10 @@ spec:
                   "sleep {{ .Values.server.preStopSleepSeconds }} && kill -SIGTERM $(pidof bao)",
                 ]
             {{- if eq (.Values.server.dev_mode.enabled | toString) "true" }}
+            # Persistent dev mode: the server uses the file storage backend on
+            # the data PVC and therefore starts SEALED. This hook initializes it
+            # on first boot and auto-unseals it on every (re)start using unseal
+            # keys persisted on the data volume.
             postStart:
               exec:
                 command:
@@ -225,13 +229,22 @@ spec:
                   - -c
                   - |
                     sleep 20
-                    # export BAO_ADDR='http://127.0.0.1:8200'
-                    # export BAO_SKIP_VERIFY=true
-                    INIT_STATUS=$(bao status {{ if not (eq (include "openbao.tlsEnabled" .) "true") }}-tls-skip-verify {{ end }}-format=json | grep -o '"initialized":[^,]*' | cut -d: -f2)
+                    KEYS_FILE="{{ .Values.server.dataStorage.mountPath }}/bootstrap-keys.json"
+                    STATUS=$(bao status {{ if not (eq (include "openbao.tlsEnabled" .) "true") }}-tls-skip-verify {{ end }}-format=json 2>/dev/null)
+                    INIT_STATUS=$(echo "$STATUS" | grep -o '"initialized":[^,]*' | cut -d: -f2)
                     if [ "$INIT_STATUS" = "false" ]; then
-                      bao operator init >> /tmp/keys.file
+                      echo "Initializing OpenBao (persistent dev mode)...";
+                      bao operator init {{ if not (eq (include "openbao.tlsEnabled" .) "true") }}-tls-skip-verify {{ end }}-key-shares=1 -key-threshold=1 -format=json > "$KEYS_FILE";
                     else
-                      echo "OpenBao is already initialized."
+                      echo "OpenBao is already initialized.";
+                    fi
+                    if [ -f "$KEYS_FILE" ]; then
+                      SEALED=$(bao status {{ if not (eq (include "openbao.tlsEnabled" .) "true") }}-tls-skip-verify {{ end }}-format=json 2>/dev/null | grep -o '"sealed":[^,]*' | cut -d: -f2)
+                      if [ "$SEALED" = "true" ]; then
+                        echo "Auto-unsealing OpenBao...";
+                        UNSEAL_KEY=$(grep -o '"unseal_keys_b64":\["[^"]*"' "$KEYS_FILE" | sed -E 's/.*\["([^"]*)".*/\1/');
+                        bao operator unseal {{ if not (eq (include "openbao.tlsEnabled" .) "true") }}-tls-skip-verify {{ end }}"$UNSEAL_KEY";
+                      fi
                     fi
             {{- else if .Values.server.postStart }}
             postStart:

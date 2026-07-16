@@ -48,8 +48,10 @@ the most commonly used parameters.
 | `server.dataStorage.storageClass` | Data PVC StorageClass (null = default) | `null` |
 | `server.auditStorage.enabled` | Create the audit-log PVC | `false` |
 | `server.auditStorage.size` | Audit PVC size | `10Gi` |
-| `server.dev_mode.enabled` | Run in dev mode (in-memory, no unseal) — shipped default | `true` |
-| `server.dev_mode.sealToken` | Dev unseal token (random if empty) | `""` |
+| `server.dev_mode.enabled` | Run in persistent dev mode (file backend on the data PVC, auto-init/auto-unseal) — shipped default | `true` |
+| `server.dev_mode.sealToken` | Static unseal key stored in `bao-static-unseal-key` (random if empty) | `""` |
+| `server.dev_mode.devRootToken` | Root token used by the dev bootstrap | `"root"` |
+| `server.dev_mode.config` | HCL config for the persistent dev server (file backend) | *(multi-line)* |
 | `server.standalone.enabled` | Run in standalone mode (file backend) | `"-"` |
 | `server.ha.enabled` | Run in HA mode | `false` |
 | `server.ha.replicas` | HA replica count | `3` |

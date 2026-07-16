@@ -53,8 +53,10 @@ Kubernetes: `>= 1.30.0-0`
 | server.dataStorage.mountPath | string | `"/openbao/data"` |  |
 | server.dataStorage.size | string | `"10Gi"` |  |
 | server.dataStorage.storageClass | string | `nil` |  |
-| server.dev_mode.sealToken | string | `""` | Dev-mode static unseal token. If empty, a random token is generated. |
-| server.dev_mode.enabled | bool | `true` | Run OpenBao in dev mode (in-memory, no unseal/init). Shipped default; experimentation only. |
+| server.dev_mode.sealToken | string | `""` | Dev-mode static unseal key stored in the `bao-static-unseal-key` secret. If empty, a random key is generated. |
+| server.dev_mode.devRootToken | string | `"root"` | Root token used by the dev-mode bootstrap. |
+| server.dev_mode.config | string | *(multi-line)* | HCL config for the persistent dev server (file storage backend on the data PVC). |
+| server.dev_mode.enabled | bool | `true` | Run OpenBao in persistent dev mode (file backend on the data PVC, auto-init and auto-unseal). Shipped default; development/testing only. |
 | server.enabled | string | `"-"` |  |
 | server.extraArgs | string | `""` | extraArgs is a string containing additional OpenBao server arguments. |
 | server.extraContainers | string | `nil` |  |

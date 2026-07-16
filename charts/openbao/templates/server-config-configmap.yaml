@@ -6,8 +6,7 @@ SPDX-License-Identifier: MPL-2.0
 {{ template "openbao.mode" . }}
 {{- if ne .mode "external" }}
 {{- if .serverEnabled -}}
-{{- if ne .mode "dev" -}}
-{{ if or (.Values.server.standalone.config) (.Values.server.ha.config) -}}
+{{ if or (and (ne .mode "dev") (or .Values.server.standalone.config .Values.server.ha.config)) (and (eq .mode "dev") .Values.server.dev_mode.config) -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -27,7 +26,6 @@ metadata:
 data:
   extraconfig-from-values.hcl: |-
     {{ template "openbao.config" . }}
-{{- end }}
 {{- end }}
 {{- end }}
 {{- end }}

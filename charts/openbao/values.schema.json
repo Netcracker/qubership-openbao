@@ -130,6 +130,12 @@
                         },
                         "sealToken": {
                             "type": "string"
+                        },
+                        "devRootToken": {
+                            "type": "string"
+                        },
+                        "config": {
+                            "type": "string"
                         }
                     }
                 },
