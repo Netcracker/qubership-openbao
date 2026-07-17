@@ -237,6 +237,17 @@ load _helpers
   [[ "${script}" == *"bao operator init"* ]]
 }
 
+@test "server/standalone-StatefulSet: dev mode postStart waits for OpenBao readiness" {
+  cd `chart_dir`
+  local script=$(helm template \
+      --show-only templates/server-statefulset.yaml  \
+      --set 'server.dev_mode.enabled=true' \
+      . | tee /dev/stderr |
+      yq -r '.spec.template.spec.containers[0].lifecycle.postStart.exec.command[2]' | tee /dev/stderr)
+  [[ "${script}" == *"for i in $(seq 1 30); do"* ]]
+  [[ "${script}" == *"sleep 2"* ]]
+}
+
 #--------------------------------------------------------------------
 # updateStrategy
 
