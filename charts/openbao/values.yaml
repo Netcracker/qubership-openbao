@@ -776,6 +776,7 @@ server:
         {{- if .Values.global.tlsDisable }}
         tls_disable = 1
         {{- else }}
+        tls_disable = 0
         tls_cert_file = "{{ .Values.server.tls.mountPath }}/{{ .Values.server.tls.certKey }}"
         tls_key_file  = "{{ .Values.server.tls.mountPath }}/{{ .Values.server.tls.keyKey }}"
         {{- if .Values.server.tls.tlsMinVersion }}
@@ -856,6 +857,7 @@ server:
           {{- if .Values.global.tlsDisable }}
           tls_disable = 1
           {{- else }}
+          tls_disable = 0
           tls_cert_file = "{{ .Values.server.tls.mountPath }}/{{ .Values.server.tls.certKey }}"
           tls_key_file  = "{{ .Values.server.tls.mountPath }}/{{ .Values.server.tls.keyKey }}"
           {{- if .Values.server.tls.tlsMinVersion }}
@@ -870,9 +872,17 @@ server:
           #  unauthenticated_metrics_access = "true"
           #}
         }
-
         storage "raft" {
           path = "/openbao/data"
+          retry_join {
+            leader_api_addr = "{{ include "openbao.scheme" . }}://{{ include "openbao.fullname" . }}-0.{{ include "openbao.fullname" . }}-internal:8200"
+          }
+          retry_join {
+            leader_api_addr = "{{ include "openbao.scheme" . }}://{{ include "openbao.fullname" . }}-1.{{ include "openbao.fullname" . }}-internal:8200"
+          }
+          retry_join {
+            leader_api_addr = "{{ include "openbao.scheme" . }}://{{ include "openbao.fullname" . }}-2.{{ include "openbao.fullname" . }}-internal:8200"
+          }
         }
 
         service_registration "kubernetes" {}
@@ -936,7 +946,7 @@ server:
 
       # maxUnavailable will default to (n/2)-1 where n is the number of
       # replicas. If you'd like a custom value, you can specify an override here.
-      maxUnavailable: null
+      maxUnavailable: 0
 
   # Definition of the serviceAccount used to run Vault.
   # These options are also used when using an external OpenBao server to validate
