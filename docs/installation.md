@@ -111,6 +111,7 @@ Ready-made value files for the common topologies are provided under
   kubectl exec -n openbao openbao-0 -- bao operator unseal <key-share>
   # In HA, join and unseal the remaining replicas as needed.
   ```
+### Very important save this seal tokens and root tocket to security space!
 
 - **Auto-unseal** can be configured by adding a `seal` stanza to
   `server.standalone.config` / `server.ha.config` (a commented GCP Cloud KMS

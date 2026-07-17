@@ -27,8 +27,6 @@ server:
   dataStorage:
     enabled: true
     size: 10Gi
-    mountPath: /openbao/data
-    # storageClass: my-storage-class
 
   resources:
     requests:

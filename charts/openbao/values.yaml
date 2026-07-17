@@ -718,14 +718,6 @@ server:
     # Labels to apply to the PVC
     labels: {}
 
-  # # Run OpenBao in "dev" mode. This requires no further setup, no state management,
-  # # and no initialization. This is useful for experimenting with OpenBao without
-  # # needing to unseal, store keys, et. al. All data is lost on restart - do not
-  # # use dev mode for anything other than experimenting.
-  # # See https://openbao.org/docs/concepts/dev-server to know more
-  # dev:
-  #   enabled: false
-
   # Run OpenBao in "dev_mode". Despite the name, this is a *persistent*
   # development server: it uses the `file` storage backend on the data PVC
   # (server.dataStorage) so data survives pod restarts, and a postStart hook
