@@ -1,0 +1,18 @@
+server:
+  dev_mode:
+    enabled: false
+  ha:
+    enabled: true
+    replicas: 3
+    raft:
+      enabled: true
+    disruptionBudget:
+      enabled: true
+      maxUnavailable: 1
+  resources:
+    requests:
+      memory: 512Mi
+      cpu: 500m
+    limits:
+      memory: 512Mi
+      cpu: 500m
