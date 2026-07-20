@@ -51,7 +51,7 @@ server:
     # -- image repo to use for server image
     repository: "quay.io/openbao/openbao"
     # -- image tag to use for server image - defaults to chart appVersion
-    tag: "2.5"
+    tag: "2.6.0"
     # -- image pull policy to use for server image. if tag is "latest", set to "Always"
     pullPolicy: IfNotPresent
 

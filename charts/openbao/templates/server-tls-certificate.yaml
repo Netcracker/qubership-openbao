@@ -22,7 +22,6 @@ metadata:
     app.kubernetes.io/name: '{{ .Values.SERVICE_NAME }}'
     app.kubernetes.io/part-of: '{{ .Values.APPLICATION_NAME }}'
     app.kubernetes.io/managed-by: '{{ .Values.MANAGED_BY }}'
-    app.kubernetes.io/component: server
     deployment.netcracker.com/sessionId: '{{ .Values.DEPLOYMENT_SESSION_ID }}'
 spec:
   secretName: {{ template "openbao.tls.secretName" . }}
