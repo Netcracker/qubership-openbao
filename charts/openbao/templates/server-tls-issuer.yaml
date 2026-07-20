@@ -5,12 +5,16 @@ SPDX-License-Identifier: MPL-2.0
 
 {{ template "openbao.mode" . }}
 {{- if ne .mode "external" }}
+{{- if ne .mode "dev" }}
 {{- if .serverEnabled -}}
-{{ if or (and (ne .mode "dev") (or .Values.server.standalone.config .Values.server.ha.config)) (and (eq .mode "dev") .Values.server.dev_mode.config) -}}
-apiVersion: v1
-kind: ConfigMap
+{{- if eq (include "openbao.tls.useGeneratedIssuer" .) "true" -}}
+# Self-signed cert-manager Issuer for the OpenBao server TLS certificate.
+# Generated because global.tlsDisable=false, server.tls.source=certManager,
+# server.tls.certManager.generateIssuer=true and no clusterIssuerName is set.
+apiVersion: cert-manager.io/v1
+kind: Issuer
 metadata:
-  name: {{ template "openbao.fullname" . }}-config
+  name: {{ template "openbao.fullname" . }}-issuer
   namespace: {{ include "openbao.namespace" . }}
   labels:
     helm.sh/chart: {{ include "openbao.chart" . }}
@@ -18,14 +22,11 @@ metadata:
     app.kubernetes.io/name: '{{ .Values.SERVICE_NAME }}'
     app.kubernetes.io/part-of: '{{ .Values.APPLICATION_NAME }}'
     app.kubernetes.io/managed-by: '{{ .Values.MANAGED_BY }}'
+    app.kubernetes.io/component: server
     deployment.netcracker.com/sessionId: '{{ .Values.DEPLOYMENT_SESSION_ID }}'
-{{- if .Values.server.configAnnotation }}
-  annotations:
-    vault.hashicorp.com/config-checksum: {{ include "openbao.config" . | sha256sum }}
+spec:
+  selfSigned: {}
 {{- end }}
-data:
-  extraconfig-from-values.hcl: |-
-    {{ template "openbao.config" . }}
 {{- end }}
 {{- end }}
 {{- end }}

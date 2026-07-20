@@ -21,6 +21,9 @@ data:
   S3_EXPIRE_DAYS: {{ .Values.snapshotAgent.config.s3ExpireDays | quote }}
   BAO_AUTH_PATH: {{ .Values.snapshotAgent.config.baoAuthPath }}
   BAO_ROLE: {{ .Values.snapshotAgent.config.baoRole }}
+  {{- if eq (include "openbao.tlsEnabled" .) "true" }}
+  BAO_CACERT: "{{ include "openbao.tls.caCertPath" . }}"
+  {{- end }}
   {{- if include "openbao.global.externalAddr" . }}
   BAO_ADDR: "{{ include "openbao.global.externalAddr" . }}"
   {{- else if and (eq .mode "ha") (eq (.Values.server.service.active.enabled | toString) "true")}}

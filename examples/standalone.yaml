@@ -1,0 +1,44 @@
+# Example values: standalone mode (file storage backend, single replica).
+# Not highly available. Server starts sealed and must be initialized/unsealed.
+#
+# Install:
+#   helm install openbao ./charts/openbao -n openbao --create-namespace -f examples/standalone.yaml
+#
+# After install:
+#   kubectl exec -n openbao openbao-0 -- bao operator init
+#   kubectl exec -n openbao openbao-0 -- bao operator unseal <key-share>
+
+global:
+  tlsDisable: false
+
+server:
+  dev_mode:
+    enabled: false
+  standalone:
+    enabled: true
+
+  # Persistent storage for the file backend.
+  dataStorage:
+    enabled: true
+    size: 10Gi
+    mountPath: /openbao/data
+    # storageClass: my-storage-class
+
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 250m
+    limits:
+      memory: 256Mi
+      cpu: 250m
+
+  # End-to-end TLS via cert-manager, with the chart bootstrapping its own issuer.
+  tls:
+    source: certManager
+    tlsMinVersion: tls12
+    certManager:
+      generateIssuer: true
+      durationDays: 365
+
+ui:
+  enabled: true

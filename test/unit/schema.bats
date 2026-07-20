@@ -44,3 +44,9 @@ load _helpers
   run helm template . --set ui.enabled=true
   [ "$status" -eq 0 ]
 }
+
+@test "schema: storageClass can be null" {
+  cd `chart_dir`
+  run helm template . --set server.dataStorage.storageClass=null
+  [ "$status" -eq 0 ]
+}

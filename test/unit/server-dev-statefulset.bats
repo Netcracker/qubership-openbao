@@ -237,36 +237,6 @@ load _helpers
 }
 
 #--------------------------------------------------------------------
-# devRootToken
-
-@test "server/dev-StatefulSet: set default devRootToken" {
-  cd `chart_dir`
-  local object=$(helm template \
-      --show-only templates/server-statefulset.yaml  \
-      --set 'server.dev.enabled=true' \
-      . | tee /dev/stderr |
-      yq -r '.spec.template.spec.containers[0].env' | tee /dev/stderr)
-
-  local name=$(echo $object |
-      yq -r 'map(select(.name=="VAULT_DEV_ROOT_TOKEN_ID")) | .[] .value' | tee /dev/stderr)
-  [ "${name}" = "root" ]
-}
-
-@test "server/dev-StatefulSet: set custom devRootToken" {
-  cd `chart_dir`
-  local object=$(helm template \
-      --show-only templates/server-statefulset.yaml  \
-      --set 'server.dev.enabled=true' \
-      --set 'server.dev.devRootToken=customtoken' \
-      . | tee /dev/stderr |
-      yq -r '.spec.template.spec.containers[0].env' | tee /dev/stderr)
-
-  local name=$(echo $object |
-      yq -r 'map(select(.name=="VAULT_DEV_ROOT_TOKEN_ID")) | .[] .value' | tee /dev/stderr)
-  [ "${name}" = "customtoken" ]
-}
-
-#--------------------------------------------------------------------
 # dev listen address
 
 @test "server/dev-StatefulSet: set dev listen address in dev mode" {

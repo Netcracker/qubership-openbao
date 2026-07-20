@@ -1,20 +1,14 @@
-# qubership-repo-template
+# qubership-openbao
 
-Click [here](https://github.com/Netcracker/qubership-repo-template/generate) to create your copy of this repository.
+A Netcracker/Qubership Helm chart for deploying [OpenBao](https://openbao.org/)
+(an open-source fork of HashiCorp Vault) on Kubernetes and OpenShift.
 
-## Installation
+## List of sections below provides information about the OpenBao installation, configuration, and architecture.
 
-This section typically describes the process of preparing the project for use, including required dependencies and general setup steps.
+- [Architecture](docs/architecture.md)
+- [Installation](docs/installation.md)
+- [Configuration](docs/configuration.md)
 
-## Build
-
-This section outlines the build process, tools used, and general information about preparing project artifacts.
-
-## Testing
-
-This section provides a general description of testing strategies, tools, and approaches relevant to the project.
-
-## Debug
-
-This section provides an overview of debugging approaches and tools relevant to the project.
-
+The full, auto-generated Helm values reference is available in
+[charts/openbao/README.md](charts/openbao/README.md). Ready-made value files for
+common topologies are in [examples/](examples).

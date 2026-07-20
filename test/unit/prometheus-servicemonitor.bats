@@ -171,6 +171,32 @@ load _helpers
   [ "$(echo "$output" | yq -r '.spec.endpoints[0].tlsConfig.ca')" = "ca.crt" ]
 }
 
+@test "prometheus/ServiceMonitor-server: tlsConfig verifies CA when TLS on" {
+  cd `chart_dir`
+  local output=$( (helm template \
+    --show-only templates/prometheus-servicemonitor.yaml \
+    --set 'serverTelemetry.serviceMonitor.enabled=true' \
+    --set 'global.tlsDisable=false' \
+    .) | tee /dev/stderr)
+
+  [ "$(echo "$output" | yq -r '.spec.endpoints[0].tlsConfig | has("insecureSkipVerify")')" = "false" ]
+  [ "$(echo "$output" | yq -r '.spec.endpoints[0].tlsConfig.ca.secret.name')" = "release-name-openbao-tls" ]
+  [ "$(echo "$output" | yq -r '.spec.endpoints[0].tlsConfig.ca.secret.key')" = "ca.crt" ]
+  [ "$(echo "$output" | yq -r '.spec.endpoints[0].tlsConfig.serverName')" = "release-name-openbao" ]
+}
+
+@test "prometheus/ServiceMonitor-server: tlsConfig can skip verify when TLS on" {
+  cd `chart_dir`
+  local output=$( (helm template \
+    --show-only templates/prometheus-servicemonitor.yaml \
+    --set 'serverTelemetry.serviceMonitor.enabled=true' \
+    --set 'global.tlsDisable=false' \
+    --set 'serverTelemetry.serviceMonitor.insecureSkipVerify=true' \
+    .) | tee /dev/stderr)
+
+  [ "$(echo "$output" | yq -r '.spec.endpoints[0].tlsConfig.insecureSkipVerify')" = "true" ]
+}
+
 @test "prometheus/ServiceMonitor-server: authorization default" {
   cd `chart_dir`
   local output=$( (helm template \

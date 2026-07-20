@@ -1,6 +1,14 @@
 {{ template "openbao.mode" . }}
 {{- if ne .mode "external" }}
-{{- if and (not .Values.global.tlsDisable) .Values.server.gateway.tlsPolicy.enabled -}}
+{{- $btpCRD := .Capabilities.APIVersions.Has (printf "%s/BackendTLSPolicy" .Values.server.gateway.tlsPolicy.apiVersion) -}}
+{{- /*
+BackendTLSPolicy implements TLS re-encrypt: the gateway terminates the client
+TLS and opens a new TLS connection to the OpenBao backend, validating the
+backend certificate. This matches the seaweedfs re-encrypt mode used when the
+certificate is chart-generated (source=certManager). Only rendered when TLS is
+enabled, the policy is requested and the BackendTLSPolicy CRD is present.
+*/ -}}
+{{- if and (not .Values.global.tlsDisable) .Values.server.gateway.tlsPolicy.enabled $btpCRD -}}
 {{- $serviceName := include "openbao.fullname" . -}}
 {{- template "openbao.serverServiceEnabled" . -}}
 {{- if .serverServiceEnabled -}}
@@ -36,8 +44,16 @@ spec:
     sectionName: {{ include "openbao.scheme" . }}
   {{- end }}
   validation:
-    {{- with .Values.server.gateway.tlsPolicy.validation }}
-      {{- toYaml . | nindent 4 }}
+    {{- if .Values.server.gateway.tlsPolicy.validation }}
+      {{- toYaml .Values.server.gateway.tlsPolicy.validation | nindent 4 }}
+    {{- else }}
+    # Default: validate the OpenBao backend certificate against the CA stored in
+    # the chart's TLS secret (re-encrypt mode). Override via
+    # server.gateway.tlsPolicy.validation.
+    caCertificateRefs:
+      - group: ''
+        kind: Secret
+        name: {{ template "openbao.tls.secretName" . }}
     {{- end }}
     hostname: {{ include "openbao.fullname" . }}
 {{- end }}

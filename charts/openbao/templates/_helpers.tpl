@@ -80,14 +80,6 @@ Resolve the external OpenBao/Vault address if the injector in order of precedenc
   {{- end -}}
 {{- end -}}
 
-{{/*
-Compute if the injector is enabled.
-*/}}
-{{- define "openbao.injectorEnabled" -}}
-{{- $_ := set . "injectorEnabled" (or
-  (eq (.Values.injector.enabled | toString) "true")
-  (and (eq (.Values.injector.enabled | toString) "-") (eq (.Values.global.enabled | toString) "true"))) -}}
-{{- end -}}
 
 {{/*
 Compute if the server is enabled.
@@ -191,8 +183,6 @@ template logic.
     {{- $_ := set . "mode" "external" -}}
   {{- else if not .serverEnabled -}}
     {{- $_ := set . "mode" "external" -}}
-  {{- else if eq (.Values.server.dev.enabled | toString) "true" -}}
-    {{- $_ := set . "mode" "dev" -}}
   {{- else if eq (.Values.server.ha.enabled | toString) "true" -}}
     {{- $_ := set . "mode" "ha" -}}
   {{- else if or (eq (.Values.server.standalone.enabled | toString) "true") (eq (.Values.server.standalone.enabled | toString) "-") -}}
@@ -230,6 +220,17 @@ extra volumes the user may have specified (such as a secret with TLS).
           configMap:
             name: {{ template "openbao.fullname" . }}-config
   {{ end }}
+  {{- if and (eq .mode "dev") (.Values.server.dev_mode.config) }}
+        - name: config
+          configMap:
+            name: {{ template "openbao.fullname" . }}-config
+  {{ end }}
+  {{- if and (ne .mode "dev") (eq (include "openbao.tlsEnabled" .) "true") }}
+        - name: tls
+          secret:
+            secretName: {{ template "openbao.tls.secretName" . }}
+            defaultMode: 420
+  {{- end }}
   {{- range .Values.server.extraVolumes }}
         - name: userconfig-{{ .name }}
           {{ .type }}:
@@ -239,6 +240,17 @@ extra volumes the user may have specified (such as a secret with TLS).
             secretName: {{ .name }}
           {{- end }}
             defaultMode: {{ .defaultMode | default 420 }}
+  {{- end }}
+  {{- $devModeVolumeExists := false -}}
+  {{- range .Values.server.volumes }}
+    {{- if eq .name "static-key-volume" }}
+      {{- $devModeVolumeExists = true -}}
+    {{- end }}
+  {{- end }}
+  {{- if and (eq (.Values.server.dev_mode.enabled | toString) "true") (not $devModeVolumeExists) }}
+        - name: static-key-volume
+          secret:
+            secretName: bao-static-unseal-key
   {{- end }}
   {{- if .Values.server.volumes }}
     {{- toYaml .Values.server.volumes | nindent 8}}
@@ -251,7 +263,7 @@ file with IP addresses to make the out of box experience easier
 for users looking to use this chart with Consul Helm.
 */}}
 {{- define "openbao.args" -}}
-  {{ if or (eq .mode "standalone") (eq .mode "ha") }}
+  {{ if or (eq .mode "standalone") (eq .mode "ha") (eq .mode "dev") }}
           - |
             cp /openbao/config/extraconfig-from-values.hcl /tmp/storageconfig.hcl;
             [ -n "${HOST_IP}" ] && sed -Ei "s|HOST_IP|${HOST_IP?}|g" /tmp/storageconfig.hcl;
@@ -261,9 +273,6 @@ for users looking to use this chart with Consul Helm.
             [ -n "${TRANSIT_ADDR}" ] && sed -Ei "s|TRANSIT_ADDR|${TRANSIT_ADDR?}|g" /tmp/storageconfig.hcl;
             [ -n "${RAFT_ADDR}" ] && sed -Ei "s|RAFT_ADDR|${RAFT_ADDR?}|g" /tmp/storageconfig.hcl;
             /usr/local/bin/docker-entrypoint.sh bao server -config=/tmp/storageconfig.hcl {{ .Values.server.extraArgs }}
-   {{ else if eq .mode "dev" }}
-          - |
-            /usr/local/bin/docker-entrypoint.sh bao server -dev {{ .Values.server.extraArgs }}
   {{ end }}
 {{- end -}}
 
@@ -271,12 +280,6 @@ for users looking to use this chart with Consul Helm.
 Set's additional environment variables based on the mode.
 */}}
 {{- define "openbao.envs" -}}
-  {{ if eq .mode "dev" }}
-            - name: VAULT_DEV_ROOT_TOKEN_ID
-              value: {{ .Values.server.dev.devRootToken }}
-            - name: VAULT_DEV_LISTEN_ADDRESS
-              value: "[::]:8200"
-  {{ end }}
 {{- end -}}
 
 {{/*
@@ -288,7 +291,7 @@ based on the mode configured.
             - name: audit
               mountPath: {{ .Values.server.auditStorage.mountPath }}
   {{ end }}
-  {{ if or (eq .mode "standalone") (and (eq .mode "ha") (eq (.Values.server.ha.raft.enabled | toString) "true"))  }}
+  {{ if or (eq .mode "standalone") (eq .mode "dev") (and (eq .mode "ha") (eq (.Values.server.ha.raft.enabled | toString) "true"))  }}
     {{ if eq (.Values.server.dataStorage.enabled | toString) "true" }}
             - name: data
               mountPath: {{ .Values.server.dataStorage.mountPath }}
@@ -298,10 +301,30 @@ based on the mode configured.
             - name: config
               mountPath: /openbao/config
   {{ end }}
+  {{ if and (eq .mode "dev") (.Values.server.dev_mode.config) }}
+            - name: config
+              mountPath: /openbao/config
+  {{ end }}
+  {{- if and (ne .mode "dev") (eq (include "openbao.tlsEnabled" .) "true") }}
+            - name: tls
+              readOnly: true
+              mountPath: {{ .Values.server.tls.mountPath }}
+  {{- end }}
   {{- range .Values.server.extraVolumes }}
             - name: userconfig-{{ .name }}
               readOnly: true
               mountPath: {{ .path | default "/openbao/userconfig" }}/{{ .name }}
+  {{- end }}
+  {{- $devModeMountExists := false -}}
+  {{- range .Values.server.volumeMounts }}
+    {{- if eq .name "static-key-volume" }}
+      {{- $devModeMountExists = true -}}
+    {{- end }}
+  {{- end }}
+  {{- if and (eq (.Values.server.dev_mode.enabled | toString) "true") (not $devModeMountExists) }}
+            - name: static-key-volume
+              mountPath: /bao/secrets
+              readOnly: true
   {{- end }}
   {{- if .Values.server.volumeMounts }}
     {{- toYaml .Values.server.volumeMounts | nindent 12}}
@@ -350,6 +373,24 @@ storage might be desired by the user.
         storageClassName: {{ .Values.server.auditStorage.storageClass }}
           {{- end }}
       {{ end }}
+  {{- else if and (eq .mode "dev") (eq (.Values.server.dataStorage.enabled | toString) "true") }}
+  # Persistent dev mode: create the data PVC so file storage survives restarts.
+  volumeClaimTemplates:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: data
+        {{- include "openbao.dataVolumeClaim.annotations" . | nindent 6 }}
+        {{- include "openbao.dataVolumeClaim.labels" . | nindent 6 }}
+      spec:
+        accessModes:
+          - {{ .Values.server.dataStorage.accessMode | default "ReadWriteOnce" }}
+        resources:
+          requests:
+            storage: {{ .Values.server.dataStorage.size }}
+          {{- if .Values.server.dataStorage.storageClass }}
+        storageClassName: {{ .Values.server.dataStorage.storageClass }}
+          {{- end }}
   {{ end }}
 {{- end -}}
 
@@ -836,17 +877,6 @@ Sets extra openbao server Service (headless) annotations
 {{- end -}}
 
 {{/*
-Sets PodSecurityPolicy annotations
-*/}}
-{{- define "openbao.psp.annotations" -}}
-  {{- $generic := .Values.global.psp.annotations -}}
-  {{- if $generic }}
-  annotations:
-    {{- include "openbao.annotations.render.4" (list . $generic) -}}
-  {{- end }}
-{{- end -}}
-
-{{/*
 Sets extra statefulset annotations
 */}}
 {{- define "openbao.statefulSet.annotations" -}}
@@ -1102,6 +1132,66 @@ Inject extra environment populated by secrets, if populated
 {{- end -}}
 
 {{/*
+Whether server TLS is enabled. TLS is on whenever end-to-end encryption is not
+disabled via global.tlsDisable.
+*/}}
+{{- define "openbao.tlsEnabled" -}}
+{{- if .Values.global.tlsDisable -}}
+{{- "false" -}}
+{{- else -}}
+{{- "true" -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Name of the Kubernetes secret that holds the server TLS material.
+Defaults to "<fullname>-tls" when server.tls.secretName is empty.
+The same name is used across all three sources (certManager, rawCerts,
+existingSecret) so that the pod mount, BAO_CACERT and Gateway policies all
+reference a single, consistent secret name.
+*/}}
+{{- define "openbao.tls.secretName" -}}
+{{- if .Values.server.tls.secretName -}}
+{{- .Values.server.tls.secretName -}}
+{{- else -}}
+{{- printf "%s-tls" (include "openbao.fullname" .) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Whether the chart should create a self-signed cert-manager Issuer. True only
+when TLS is on, source=certManager, generateIssuer is requested and no
+ClusterIssuer name is provided.
+*/}}
+{{- define "openbao.tls.useGeneratedIssuer" -}}
+{{- if and (eq (include "openbao.tlsEnabled" .) "true") (eq .Values.server.tls.source "certManager") .Values.server.tls.certManager.generateIssuer (not .Values.server.tls.certManager.clusterIssuerName) -}}
+{{- "true" -}}
+{{- else -}}
+{{- "false" -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Whether the chart should create a kubernetes.io/tls secret from inline PEM
+material. True only when TLS is on and source=rawCerts with both crt and key set.
+*/}}
+{{- define "openbao.tls.useRawCerts" -}}
+{{- if and (eq (include "openbao.tlsEnabled" .) "true") (eq .Values.server.tls.source "rawCerts") .Values.server.tls.certs.crt .Values.server.tls.certs.key -}}
+{{- "true" -}}
+{{- else -}}
+{{- "false" -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Absolute path to the CA certificate mounted inside the server container.
+Used for BAO_CACERT, probes and in-cluster verification.
+*/}}
+{{- define "openbao.tls.caCertPath" -}}
+{{- printf "%s/%s" .Values.server.tls.mountPath .Values.server.tls.caKey -}}
+{{- end -}}
+
+{{/*
 imagePullSecrets generates pull secrets from either string or map values.
 A map value must be indexable by the key 'name'.
 */}}
@@ -1157,7 +1247,9 @@ Supported inputs are Values.ui
 config file from values
 */}}
 {{- define "openbao.config" -}}
-  {{- if or (eq .mode "ha") (eq .mode "standalone") }}
+  {{- if eq .mode "dev" }}
+    {{ tpl .Values.server.dev_mode.config . | nindent 4 | trim }}
+  {{- else if or (eq .mode "ha") (eq .mode "standalone") }}
   {{- $type := typeOf (index .Values.server .mode).config }}
   {{- if eq $type "string" }}
   {{- if eq .mode "standalone" }}

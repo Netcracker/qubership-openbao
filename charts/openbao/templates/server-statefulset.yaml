@@ -104,6 +104,10 @@ spec:
                   fieldPath: metadata.namespace
             - name: BAO_ADDR
               value: "{{ include "openbao.scheme" . }}://127.0.0.1:8200"
+            {{- if eq (include "openbao.tlsEnabled" .) "true" }}
+            - name: BAO_CACERT
+              value: "{{ include "openbao.tls.caCertPath" . }}"
+            {{- end }}
             - name: BAO_API_ADDR
               {{- if .Values.server.ha.apiAddr }}
               value: {{ .Values.server.ha.apiAddr }}
@@ -171,7 +175,7 @@ spec:
             #   1 - error
             #   2 - sealed
             exec:
-              command: ["/bin/sh", "-ec", "bao status -tls-skip-verify"]
+              command: ["/bin/sh", "-ec", {{ if eq (include "openbao.tlsEnabled" .) "true" }}"bao status"{{ else }}"bao status -tls-skip-verify"{{ end }}]
             {{- end }}
             failureThreshold: {{ .Values.server.readinessProbe.failureThreshold }}
             initialDelaySeconds: {{ .Values.server.readinessProbe.initialDelaySeconds }}
@@ -213,7 +217,52 @@ spec:
                   # to this pod while it's terminating
                   "sleep {{ .Values.server.preStopSleepSeconds }} && kill -SIGTERM $(pidof bao)",
                 ]
-            {{- if .Values.server.postStart }}
+            {{- if eq (.Values.server.dev_mode.enabled | toString) "true" }}
+            # Persistent dev mode: the server uses the file storage backend on
+            # the data PVC and therefore starts SEALED. This hook initializes it
+            # on first boot and auto-unseals it on every (re)start using unseal
+            # keys persisted on the data volume.
+            postStart:
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - |
+                    set -e
+                    touch /tmp/openbao.log
+                    echo "Waiting for OpenBao to become ready...\n" >> /tmp/openbao.log
+                    KEYS_FILE="{{ .Values.server.dataStorage.mountPath }}/bootstrap-keys.json"
+                    TLS_ARGS="{{ if not (eq (include "openbao.tlsEnabled" .) "true") }}-tls-skip-verify{{ end }}"
+                    for i in $(seq 1 30); do
+                      STATUS=$(bao status ${TLS_ARGS} -format=json 2>/dev/null || true)
+                      if echo "$STATUS" | grep -q '"initialized"'; then
+                        break
+                      fi
+                      echo "Waiting for OpenBao to become ready..." >> /tmp/openbao.log
+                      sleep 2
+                    done
+                    echo $STATUS >> /tmp/openbao.log
+                    INIT_STATUS=$(echo "$STATUS" | grep -o '"initialized":[^,]*' | cut -d: -f2 | tr -d ' ')
+                    echo $INIT_STATUS >> /tmp/openbao.log
+                    if [ "$INIT_STATUS" = "false" ]; then
+                      echo "Initializing OpenBao (persistent dev mode)..." >> /tmp/openbao.log
+                      bao operator init ${TLS_ARGS} -key-shares=1 -key-threshold=1 -format=json > "$KEYS_FILE"
+                    else
+                      echo "OpenBao is already initialized." >> /tmp/openbao.log
+                    fi
+                    echo "initialization complete" >> /tmp/openbao.log
+                    if [ -f "$KEYS_FILE" ]; then
+                      SEALED=$(bao status ${TLS_ARGS} -format=json 2>/dev/null | grep -o '"sealed":[^,]*' | cut -d: -f2  | tr -d ' ')
+                      echo "OpenBao sealed status: $SEALED" >> /tmp/openbao.log
+                      echo $SEALED >> /tmp/openbao.log
+                      if [ "$SEALED" = "true" ]; then
+                        echo "Auto-unsealing OpenBao..." >> /tmp/openbao.log
+                        JSON_CONTENT=$(tr -d '\n' < "$KEYS_FILE")
+                        UNSEAL_KEY=$(printf '%s\n' "$JSON_CONTENT" | sed -n -E 's/.*"unseal_keys_b64"[[:space:]]*:[[:space:]]*\[[[:space:]]*"([^"]*)".*/\1/p' | head -n 1)
+                        bao operator unseal ${TLS_ARGS} "$UNSEAL_KEY"
+                      fi
+                    fi
+            {{- else if .Values.server.postStart }}
             postStart:
               exec:
                 command:
