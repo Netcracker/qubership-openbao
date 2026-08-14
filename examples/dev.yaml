@@ -9,11 +9,26 @@
 
 global:
   # Dev mode always serves plain HTTP; keep TLS disabled.
-  tlsDisable: true
-
+  tlsDisable: false
 server:
+  tls:
+    source: rawCerts
+    certs:
+      crt: |
+        -----BEGIN CERTIFICATE-----
+        -----END CERTIFICATE-----
+      key: |
+        -----BEGIN PRIVATE KEY-----
+        -----END PRIVATE KEY-----
+      ca: |
+        -----BEGIN CERTIFICATE-----
+        -----END CERTIFICATE-----
   dev_mode:
     enabled: true
+  ingress:
+    enabled: true
+    hosts:
+      - host: example.com
 
   # Persistent storage for the file backend (data survives restarts).
   dataStorage:
