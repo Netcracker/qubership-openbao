@@ -241,17 +241,6 @@ extra volumes the user may have specified (such as a secret with TLS).
           {{- end }}
             defaultMode: {{ .defaultMode | default 420 }}
   {{- end }}
-  {{- $devModeVolumeExists := false -}}
-  {{- range .Values.server.volumes }}
-    {{- if eq .name "static-key-volume" }}
-      {{- $devModeVolumeExists = true -}}
-    {{- end }}
-  {{- end }}
-  {{- if and (eq (.Values.server.dev_mode.enabled | toString) "true") (not $devModeVolumeExists) }}
-        - name: static-key-volume
-          secret:
-            secretName: bao-static-unseal-key
-  {{- end }}
   {{- if .Values.server.volumes }}
     {{- toYaml .Values.server.volumes | nindent 8}}
   {{- end }}
@@ -314,17 +303,6 @@ based on the mode configured.
             - name: userconfig-{{ .name }}
               readOnly: true
               mountPath: {{ .path | default "/openbao/userconfig" }}/{{ .name }}
-  {{- end }}
-  {{- $devModeMountExists := false -}}
-  {{- range .Values.server.volumeMounts }}
-    {{- if eq .name "static-key-volume" }}
-      {{- $devModeMountExists = true -}}
-    {{- end }}
-  {{- end }}
-  {{- if and (eq (.Values.server.dev_mode.enabled | toString) "true") (not $devModeMountExists) }}
-            - name: static-key-volume
-              mountPath: /bao/secrets
-              readOnly: true
   {{- end }}
   {{- if .Values.server.volumeMounts }}
     {{- toYaml .Values.server.volumeMounts | nindent 12}}

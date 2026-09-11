@@ -110,8 +110,6 @@ The chart deploys the following Kubernetes resources
 - **ServiceAccount** (`server-serviceaccount.yaml`,
   `server-serviceaccount-secret.yaml`) — identity for the pods, with an optional
   non-expiring token secret.
-- **Dev token Secret** (`server-dev-token.yaml`) — static unseal key
-  (`bao-static-unseal-key`) used only in dev mode.
 - **PodDisruptionBudget** (`server-disruptionbudget.yaml`) — availability during
   voluntary disruptions (HA).
 - **Persistent Volume Claims** — created from `server.dataStorage` and
