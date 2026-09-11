@@ -50,3 +50,28 @@ load _helpers
   run helm template . --set server.dataStorage.storageClass=null
   [ "$status" -eq 0 ]
 }
+
+@test "mode: dev_mode and ha.enabled are mutually exclusive" {
+  cd `chart_dir`
+  run helm template . \
+      --set 'server.dev_mode.enabled=true' \
+      --set 'server.ha.enabled=true'
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"mutually exclusive"* ]]
+}
+
+@test "mode: dev_mode alone still renders" {
+  cd `chart_dir`
+  run helm template . \
+      --set 'server.dev_mode.enabled=true' \
+      --set 'server.ha.enabled=false'
+  [ "$status" -eq 0 ]
+}
+
+@test "mode: ha alone still renders" {
+  cd `chart_dir`
+  run helm template . \
+      --set 'server.dev_mode.enabled=false' \
+      --set 'server.ha.enabled=true'
+  [ "$status" -eq 0 ]
+}

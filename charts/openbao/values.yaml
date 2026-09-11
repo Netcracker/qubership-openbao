@@ -723,6 +723,9 @@ server:
   # (server.dataStorage) so data survives pod restarts, and a postStart hook
   # automatically initializes it on first boot and auto-unseals it on every
   # (re)start. Intended for development / testing, not production.
+  # NOTE: mutually exclusive with server.ha.enabled — dev mode is a
+  # single-replica persistent server and cannot run in HA. The chart fails
+  # to render if both are set to true.
   dev_mode:
     enabled: true
 
@@ -808,6 +811,8 @@ server:
   # for its storage backend.  The default configuration provided will work the Consul
   # Helm project by default.  It is possible to manually configure OpenBao to use a
   # different HA backend.
+  # NOTE: mutually exclusive with server.dev_mode.enabled — the chart fails to
+  # render if both are set to true.
   ha:
     enabled: false
     replicas: 3

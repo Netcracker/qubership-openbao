@@ -97,6 +97,10 @@ evaluated in this precedence order:
   `server.ha.replicas` (default `3`) for `ha`.
 - The server HCL config is selected per mode by `openbao.config`:
   `server.standalone.config`, `server.ha.raft.config`, or `server.ha.config`.
+- `server.dev_mode.enabled` and `server.ha.enabled` are **mutually
+  exclusive**: dev mode is a single-replica persistent server and cannot run
+  in HA. `openbao.mode` fails the render (`helm template`/`helm install`)
+  with an explicit error if both are set to `true`.
 
 # Components
 

@@ -179,6 +179,9 @@ template logic.
 */}}
 {{- define "openbao.mode" -}}
   {{- template "openbao.serverEnabled" . -}}
+  {{- if and (eq (.Values.server.dev_mode.enabled | toString) "true") (eq (.Values.server.ha.enabled | toString) "true") -}}
+    {{- fail "server.dev_mode.enabled and server.ha.enabled are mutually exclusive: dev mode is a single-replica persistent server and cannot run in HA. Disable one of them." -}}
+  {{- end -}}
   {{- if or (.Values.global.externalVaultAddr) (.Values.global.externalBaoAddr) -}}
     {{- $_ := set . "mode" "external" -}}
   {{- else if not .serverEnabled -}}
