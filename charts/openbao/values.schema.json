@@ -2,6 +2,18 @@
     "$schema": "http://json-schema.org/schema#",
     "type": "object",
     "properties": {
+        "SERVICE_NAME": {
+            "type": "string"
+        },
+        "APPLICATION_NAME": {
+            "type": "string"
+        },
+        "MANAGED_BY": {
+            "type": "string"
+        },
+        "DEPLOYMENT_SESSION_ID": {
+            "type": "string"
+        },
         "extraObjects": {
             "type": "array"
         },

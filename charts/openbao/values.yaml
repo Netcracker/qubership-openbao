@@ -3,6 +3,19 @@
 
 # Available parameters and their default values for the OpenBao chart.
 
+# Identity metadata applied to the standard Kubernetes recommended labels
+# (app.kubernetes.io/name, app.kubernetes.io/part-of, app.kubernetes.io/managed-by)
+# and to deployment.netcracker.com/sessionId. These are normally supplied by the
+# Netcracker deploy descriptor during an integrated install; the defaults below
+# keep the chart self-consistent for a standalone `helm install`.
+# IMPORTANT: SERVICE_NAME must be non-empty — the ServiceMonitor selector and the
+# Service `app.kubernetes.io/name` label both use it, and an empty value makes the
+# ServiceMonitor match no Service (metrics are never scraped).
+SERVICE_NAME: openbao
+APPLICATION_NAME: openbao
+MANAGED_BY: Helm
+DEPLOYMENT_SESSION_ID: ""
+
 global:
   # -- enabled is the master enabled switch. Setting this to true or false
   # will enable or disable all the components within this chart by default.

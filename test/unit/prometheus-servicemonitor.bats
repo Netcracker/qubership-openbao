@@ -230,3 +230,89 @@ load _helpers
 
   [ "$(echo "$output" | yq -r '.spec.scrapeClass')" = "foo" ]
 }
+
+@test "prometheus/ServiceMonitor-server: selector app name is non-empty by default" {
+  cd `chart_dir`
+  local actual=$( (helm template \
+    --show-only templates/prometheus-servicemonitor.yaml \
+    --set 'serverTelemetry.serviceMonitor.enabled=true' \
+    .) | tee /dev/stderr |
+    yq -r '.spec.selector.matchLabels["app.kubernetes.io/name"]' | tee /dev/stderr)
+  [ "${actual}" = "openbao" ]
+  [ -n "${actual}" ]
+  [ "${actual}" != "null" ]
+}
+
+@test "prometheus/ServiceMonitor-server: selector matches headless Service label (non-HA)" {
+  cd `chart_dir`
+  local sm_name=$( (helm template \
+    --show-only templates/prometheus-servicemonitor.yaml \
+    --set 'serverTelemetry.serviceMonitor.enabled=true' \
+    .) | tee /dev/stderr |
+    yq -r '.spec.selector.matchLabels["app.kubernetes.io/name"]' | tee /dev/stderr)
+
+  local svc_name=$( (helm template \
+    --show-only templates/server-headless-service.yaml \
+    --set 'serverTelemetry.serviceMonitor.enabled=true' \
+    .) | tee /dev/stderr |
+    yq -r '.metadata.labels["app.kubernetes.io/name"]' | tee /dev/stderr)
+
+  [ "${sm_name}" = "${svc_name}" ]
+  [ -n "${svc_name}" ]
+
+  # The headless Service carries the openbao-internal label the selector needs.
+  local internal=$( (helm template \
+    --show-only templates/server-headless-service.yaml \
+    . ) | tee /dev/stderr |
+    yq -r '.metadata.labels["openbao-internal"]' | tee /dev/stderr)
+  [ "${internal}" = "true" ]
+}
+
+@test "prometheus/ServiceMonitor-server: selector matches active Service label (HA)" {
+  cd `chart_dir`
+  local sm_name=$( (helm template \
+    --show-only templates/prometheus-servicemonitor.yaml \
+    --set 'serverTelemetry.serviceMonitor.enabled=true' \
+    --set 'server.dev_mode.enabled=false' \
+    --set 'server.ha.enabled=true' \
+    .) | tee /dev/stderr |
+    yq -r '.spec.selector.matchLabels["app.kubernetes.io/name"]' | tee /dev/stderr)
+
+  local active_openbao=$( (helm template \
+    --show-only templates/prometheus-servicemonitor.yaml \
+    --set 'serverTelemetry.serviceMonitor.enabled=true' \
+    --set 'server.dev_mode.enabled=false' \
+    --set 'server.ha.enabled=true' \
+    .) | tee /dev/stderr |
+    yq -r '.spec.selector.matchLabels["openbao-active"]' | tee /dev/stderr)
+  [ "${active_openbao}" = "true" ]
+
+  local svc_name=$( (helm template \
+    --show-only templates/server-ha-active-service.yaml \
+    --set 'serverTelemetry.serviceMonitor.enabled=true' \
+    --set 'server.dev_mode.enabled=false' \
+    --set 'server.ha.enabled=true' \
+    .) | tee /dev/stderr |
+    yq -r '.metadata.labels["app.kubernetes.io/name"]' | tee /dev/stderr)
+
+  [ "${sm_name}" = "${svc_name}" ]
+  [ -n "${svc_name}" ]
+}
+
+@test "prometheus/ServiceMonitor-server: selector honours SERVICE_NAME override" {
+  cd `chart_dir`
+  local sm_name=$( (helm template \
+    --show-only templates/prometheus-servicemonitor.yaml \
+    --set 'serverTelemetry.serviceMonitor.enabled=true' \
+    --set 'SERVICE_NAME=custom-bao' \
+    .) | tee /dev/stderr |
+    yq -r '.spec.selector.matchLabels["app.kubernetes.io/name"]' | tee /dev/stderr)
+  [ "${sm_name}" = "custom-bao" ]
+
+  local svc_name=$( (helm template \
+    --show-only templates/server-headless-service.yaml \
+    --set 'SERVICE_NAME=custom-bao' \
+    .) | tee /dev/stderr |
+    yq -r '.metadata.labels["app.kubernetes.io/name"]' | tee /dev/stderr)
+  [ "${svc_name}" = "custom-bao" ]
+}

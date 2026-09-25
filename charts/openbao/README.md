@@ -24,6 +24,10 @@ Kubernetes: `>= 1.30.0-0`
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
+| SERVICE_NAME | string | `"openbao"` | Value of the `app.kubernetes.io/name` label applied to all objects and used by the ServiceMonitor selector. Must be non-empty; normally supplied by the Netcracker deploy descriptor. |
+| APPLICATION_NAME | string | `"openbao"` | Value of the `app.kubernetes.io/part-of` label. |
+| MANAGED_BY | string | `"Helm"` | Value of the `app.kubernetes.io/managed-by` label. |
+| DEPLOYMENT_SESSION_ID | string | `""` | Value of the `deployment.netcracker.com/sessionId` label. |
 | extraObjects | list | `[]` |  |
 | global.enabled | bool | `true` | enabled is the master enabled switch. Setting this to true or false will enable or disable all the components within this chart by default. |
 | global.externalBaoAddr | string | `""` | External openbao server address for the injector and CSI provider to use. Setting this will disable deployment of an OpenBao server. |
