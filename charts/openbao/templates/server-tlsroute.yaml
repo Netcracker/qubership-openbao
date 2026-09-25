@@ -39,6 +39,9 @@ spec:
   {{- range .Values.server.gateway.tlsRoute.hosts }}
     - {{ . | quote }}
   {{- end }}
+  {{- if not .Values.server.gateway.tlsRoute.parentRefs }}
+  {{- fail "server.gateway.tlsRoute.enabled is true but server.gateway.tlsRoute.parentRefs is empty: a TLSRoute must reference at least one parent Gateway. Set server.gateway.tlsRoute.parentRefs." }}
+  {{- end }}
   parentRefs:
   {{- with .Values.server.gateway.tlsRoute.parentRefs }}
     {{- toYaml . | nindent 4 }}

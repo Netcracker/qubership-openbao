@@ -32,6 +32,9 @@ spec:
   {{- range .Values.server.gateway.httpRoute.hosts }}
     - {{ . | quote }}
   {{- end }}
+  {{- if not .Values.server.gateway.httpRoute.parentRefs }}
+  {{- fail "server.gateway.httpRoute.enabled is true but server.gateway.httpRoute.parentRefs is empty: an HTTPRoute must reference at least one parent Gateway. Set server.gateway.httpRoute.parentRefs." }}
+  {{- end }}
   parentRefs:
   {{- with .Values.server.gateway.httpRoute.parentRefs }}
     {{- toYaml . | nindent 4 }}

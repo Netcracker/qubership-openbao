@@ -147,6 +147,10 @@ server:
 
       # List of ParentRefs. As the helm chart configures no gateways itself,
       # this should be set to at least one gateway with one or more TLS listeners
+      # REQUIRED when tlsRoute.enabled is true: a TLSRoute must reference at
+      # least one parent Gateway. Leaving this empty while the route is enabled
+      # causes the chart to fail rendering with an explicit error (rather than
+      # emitting an invalid `spec.parentRefs: null`).
       parentRefs: []
         # - name: my-gw
         #   namespace: gateway-namespace
@@ -174,6 +178,10 @@ server:
 
       # List of ParentRefs. As the helm chart configures no gateways itself,
       # this should be set to at least one gateway with one or more HTTP listeners
+      # REQUIRED when httpRoute.enabled is true: an HTTPRoute must reference at
+      # least one parent Gateway. Leaving this empty while the route is enabled
+      # causes the chart to fail rendering with an explicit error (rather than
+      # emitting an invalid `spec.parentRefs: null`).
       parentRefs: []
         # - name: my-gw
         #   namespace: gateway-namespace

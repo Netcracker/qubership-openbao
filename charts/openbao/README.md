@@ -72,7 +72,7 @@ Kubernetes: `>= 1.30.0-0`
 | server.gateway.httpRoute.matches.path.type | string | `"PathPrefix"` |  |
 | server.gateway.httpRoute.matches.path.value | string | `"/"` |  |
 | server.gateway.httpRoute.matches.timeouts | object | `{}` |  |
-| server.gateway.httpRoute.parentRefs | list | `[]` |  |
+| server.gateway.httpRoute.parentRefs | list | `[]` | Parent Gateways the HTTPRoute attaches to. Required when `server.gateway.httpRoute.enabled` is `true`; the chart fails to render if left empty while the route is enabled. |
 | server.gateway.tlsPolicy.activeService | bool | `true` |  |
 | server.gateway.tlsPolicy.annotations | object | `{}` |  |
 | server.gateway.tlsPolicy.apiVersion | string | `"gateway.networking.k8s.io/v1"` |  |
@@ -86,7 +86,7 @@ Kubernetes: `>= 1.30.0-0`
 | server.gateway.tlsRoute.enabled | bool | `false` |  |
 | server.gateway.tlsRoute.hosts | list | `[]` |  |
 | server.gateway.tlsRoute.labels | object | `{}` |  |
-| server.gateway.tlsRoute.parentRefs | list | `[]` |  |
+| server.gateway.tlsRoute.parentRefs | list | `[]` | Parent Gateways the TLSRoute attaches to. Required when `server.gateway.tlsRoute.enabled` is `true`; the chart fails to render if left empty while the route is enabled. |
 | server.ha.apiAddr | string | `nil` |  |
 | server.ha.clusterAddr | string | `nil` |  |
 | server.ha.config | string | `"ui = true\n\nlistener \"tcp\" {\n  tls_disable = 1\n  address = \"[::]:8200\"\n  cluster_address = \"[::]:8201\"\n}\nstorage \"consul\" {\n  path = \"openbao\"\n  address = \"HOST_IP:8500\"\n}\n\nservice_registration \"kubernetes\" {}\n\n# Example configuration for using auto-unseal, using Google Cloud KMS. The\n# GKMS keys must already exist, and the cluster must have a service account\n# that is authorized to access GCP KMS.\n#seal \"gcpckms\" {\n#   project     = \"openbao-helm-dev-246514\"\n#   region      = \"global\"\n#   key_ring    = \"openbao-helm-unseal-kr\"\n#   crypto_key  = \"openbao-helm-unseal-key\"\n#}\n\n# Example configuration for enabling Prometheus metrics.\n# If you are using Prometheus Operator you can enable a ServiceMonitor resource below.\n# You may wish to enable unauthenticated metrics in the listener block above.\n#telemetry {\n#  prometheus_retention_time = \"30s\"\n#  disable_hostname = true\n#}\n"` |  |
