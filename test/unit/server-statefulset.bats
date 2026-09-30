@@ -632,22 +632,12 @@ load _helpers
   cd `chart_dir`
   local actual=$(helm template \
       --show-only templates/server-statefulset.yaml  \
-      --set 'server.dataStorage.enabled=true' \
       --set 'server.dataStorage.storageClass=foo' \
       . | tee /dev/stderr |
       yq -r '.spec.volumeClaimTemplates[0].spec.storageClassName' | tee /dev/stderr)
   [ "${actual}" = "foo" ]
 
-  local actual=$(helm template \
-      --show-only templates/server-statefulset.yaml  \
-      --set 'server.standalone.enabled=true' \
-      --set 'server.dataStorage.enabled=false' \
-      --set 'server.auditStorage.enabled=true' \
-      --set 'server.auditStorage.storageClass=foo' \
-      . | tee /dev/stderr |
-      yq -r '.spec.volumeClaimTemplates[0].spec.storageClassName' | tee /dev/stderr)
-  [ "${actual}" = "foo" ]
-
+  # Data PVC is always created for standalone; audit is the second claim.
   local actual=$(helm template \
       --show-only templates/server-statefulset.yaml  \
       --set 'server.standalone.enabled=true' \
@@ -660,7 +650,6 @@ load _helpers
   local actual=$(helm template \
       --show-only templates/server-statefulset.yaml  \
       --set 'server.auditStorage.enabled=true' \
-      --set 'server.dataStorage.enabled=true' \
       . | tee /dev/stderr |
       yq -r '.spec.volumeClaimTemplates | length' | tee /dev/stderr)
   [ "${actual}" = "2" ]
@@ -669,52 +658,39 @@ load _helpers
       --show-only templates/server-statefulset.yaml  \
       --set 'server.standalone.enabled=true' \
       --set 'server.auditStorage.enabled=true' \
-      --set 'server.dataStorage.enabled=true' \
       . | tee /dev/stderr |
       yq -r '.spec.volumeClaimTemplates | length' | tee /dev/stderr)
   [ "${actual}" = "2" ]
 }
 
-@test "server/standalone-StatefulSet: can disable storage" {
+@test "server/standalone-StatefulSet: data PVC is mandatory, audit is optional" {
   cd `chart_dir`
+  # Data PVC is always present; audit disabled -> only the data claim.
   local actual=$(helm template \
       --show-only templates/server-statefulset.yaml  \
       --set 'server.auditStorage.enabled=false' \
-      --set 'server.dataStorage.enabled=true' \
       . | tee /dev/stderr |
       yq -r '.spec.volumeClaimTemplates | length' | tee /dev/stderr)
   [ "${actual}" = "1" ]
-
-  local actual=$(helm template \
+  local name=$(helm template \
       --show-only templates/server-statefulset.yaml  \
-      --set 'server.auditStorage.enabled=true' \
-      --set 'server.dataStorage.enabled=false' \
+      --set 'server.auditStorage.enabled=false' \
       . | tee /dev/stderr |
-      yq -r '.spec.volumeClaimTemplates | length' | tee /dev/stderr)
-  [ "${actual}" = "1" ]
+      yq -r '.spec.volumeClaimTemplates[0].metadata.name' | tee /dev/stderr)
+  [ "${name}" = "data" ]
 
   local actual=$(helm template \
       --show-only templates/server-statefulset.yaml  \
       --set 'server.standalone.enabled=true' \
       --set 'server.auditStorage.enabled=false' \
-      --set 'server.dataStorage.enabled=true' \
       . | tee /dev/stderr |
       yq -r '.spec.volumeClaimTemplates | length' | tee /dev/stderr)
   [ "${actual}" = "1" ]
 
-  local actual=$(helm template \
-      --show-only templates/server-statefulset.yaml  \
-      --set 'server.standalone.enabled=true' \
-      --set 'server.auditStorage.enabled=true' \
-      --set 'server.dataStorage.enabled=false' \
-      . | tee /dev/stderr |
-      yq -r '.spec.volumeClaimTemplates | length' | tee /dev/stderr)
-  [ "${actual}" = "1" ]
-
+  # audit enabled -> data + audit
   local actual=$(helm template \
       --show-only templates/server-statefulset.yaml  \
       --set 'server.auditStorage.enabled=true' \
-      --set 'server.dataStorage.enabled=true' \
       . | tee /dev/stderr |
       yq -r '.spec.volumeClaimTemplates | length' | tee /dev/stderr)
   [ "${actual}" = "2" ]
@@ -723,27 +699,18 @@ load _helpers
       --show-only templates/server-statefulset.yaml  \
       --set 'server.standalone.enabled=true' \
       --set 'server.auditStorage.enabled=true' \
-      --set 'server.dataStorage.enabled=true' \
       . | tee /dev/stderr |
       yq -r '.spec.volumeClaimTemplates | length' | tee /dev/stderr)
   [ "${actual}" = "2" ]
 
-  local actual=$(helm template \
-      --show-only templates/server-statefulset.yaml  \
-      --set 'server.auditStorage.enabled=fa;se' \
-      --set 'server.dataStorage.enabled=false' \
-      . | tee /dev/stderr |
-      yq -r '.spec.volumeClaimTemplates | length' | tee /dev/stderr)
-  [ "${actual}" = "0" ]
-
+  # The data claim cannot be turned off, so standalone always has at least one.
   local actual=$(helm template \
       --show-only templates/server-statefulset.yaml  \
       --set 'server.standalone.enabled=true' \
       --set 'server.auditStorage.enabled=false' \
-      --set 'server.dataStorage.enabled=false' \
       . | tee /dev/stderr |
       yq -r '.spec.volumeClaimTemplates | length' | tee /dev/stderr)
-  [ "${actual}" = "0" ]
+  [ "${actual}" = "1" ]
 }
 
 @test "server/standalone-StatefulSet: default audit storage mount path" {
@@ -775,7 +742,6 @@ load _helpers
   cd `chart_dir`
   local object=$(helm template \
       --show-only templates/server-statefulset.yaml  \
-      --set 'server.dataStorage.enabled=true' \
       . | tee /dev/stderr |
       yq -r '.spec.template.spec.containers[0].volumeMounts[] | select(.name == "data")' | tee /dev/stderr)
 
@@ -787,7 +753,6 @@ load _helpers
   cd `chart_dir`
   local object=$(helm template \
       --show-only templates/server-statefulset.yaml  \
-      --set 'server.dataStorage.enabled=true' \
       --set 'server.dataStorage.mountPath=/opt/vault' \
       . | tee /dev/stderr |
       yq -r '.spec.template.spec.containers[0].volumeMounts[] | select(.name == "data")' | tee /dev/stderr)
@@ -1597,7 +1562,6 @@ load _helpers
   cd `chart_dir`
   local actual=$(helm template \
       --show-only templates/server-statefulset.yaml \
-      --set 'server.dataStorage.enabled=true' \
       --set 'server.dataStorage.annotations=openBaoIsAwesome: true' \
       . | tee /dev/stderr |
       yq -r '.spec.volumeClaimTemplates[0].metadata.annotations["openBaoIsAwesome"]' | tee /dev/stderr)
@@ -1619,7 +1583,6 @@ load _helpers
   cd `chart_dir`
   local actual=$(helm template \
       --show-only templates/server-statefulset.yaml \
-      --set 'server.dataStorage.enabled=true' \
       --set 'server.dataStorage.annotations.openBaoIsAwesome=true' \
       . | tee /dev/stderr |
       yq -r '.spec.volumeClaimTemplates[0].metadata.annotations["openBaoIsAwesome"]' | tee /dev/stderr)
@@ -1945,7 +1908,6 @@ load _helpers
   cd `chart_dir`
   local actual=$(helm template \
       --show-only templates/server-statefulset.yaml \
-      --set 'server.dataStorage.enabled=true' \
       --set 'server.dataStorage.labels=openBaoIsAwesome: true' \
       . | tee /dev/stderr |
       yq -r '.spec.volumeClaimTemplates[0].metadata.labels["openBaoIsAwesome"]' | tee /dev/stderr)
@@ -1967,7 +1929,6 @@ load _helpers
   cd `chart_dir`
   local actual=$(helm template \
       --show-only templates/server-statefulset.yaml \
-      --set 'server.dataStorage.enabled=true' \
       --set 'server.dataStorage.labels.openBaoIsAwesome=true' \
       . | tee /dev/stderr |
       yq -r '.spec.volumeClaimTemplates[0].metadata.labels["openBaoIsAwesome"]' | tee /dev/stderr)

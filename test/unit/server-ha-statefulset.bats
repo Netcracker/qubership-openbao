@@ -549,10 +549,10 @@ local value=$(echo $rendered |
 
 @test "server/ha-StatefulSet: cant set data storage" {
   cd `chart_dir`
+  # HA with the default Consul backend keeps no data on disk, so no data PVC.
   local actual=$(helm template \
       --show-only templates/server-statefulset.yaml  \
       --set 'server.ha.enabled=true' \
-      --set 'server.dataStorage.enabled=true' \
       --set 'server.dataStorage.storageClass=foo' \
       . | tee /dev/stderr |
       yq -r '.spec.volumeClaimTemplates' | tee /dev/stderr)
@@ -564,7 +564,6 @@ local value=$(echo $rendered |
   local actual=$(helm template \
       --show-only templates/server-statefulset.yaml  \
       --set 'server.ha.enabled=true' \
-      --set 'server.dataStorage.enabled=false' \
       --set 'server.auditStorage.enabled=true' \
       --set 'server.auditStorage.storageClass=foo' \
       . | tee /dev/stderr |
@@ -578,7 +577,6 @@ local value=$(echo $rendered |
       --show-only templates/server-statefulset.yaml  \
       --set 'server.ha.enabled=true' \
       --set 'server.auditStorage.enabled=false' \
-      --set 'server.dataStorage.enabled=false' \
       . | tee /dev/stderr |
       yq -r '.spec.volumeClaimTemplates | length' | tee /dev/stderr)
   [ "${actual}" = "0" ]
@@ -587,7 +585,6 @@ local value=$(echo $rendered |
       --show-only templates/server-statefulset.yaml  \
       --set 'server.ha.enabled=true' \
       --set 'server.auditStorage.enabled=true' \
-      --set 'server.dataStorage.enabled=false' \
       . | tee /dev/stderr |
       yq -r '.spec.volumeClaimTemplates | length' | tee /dev/stderr)
   [ "${actual}" = "1" ]
@@ -603,13 +600,12 @@ local value=$(echo $rendered |
       yq -r '.spec.template.spec.containers[0].volumeMounts[] | select(.name == "audit")' | tee /dev/stderr)
 }
 
-@test "server/ha-StatefulSet: no data storage" {
+@test "server/ha-StatefulSet: no data storage with Consul backend" {
   cd `chart_dir`
   local actual=$(helm template \
       --show-only templates/server-statefulset.yaml  \
       --set 'server.ha.enabled=true' \
       --set 'server.auditStorage.enabled=false' \
-      --set 'server.dataStorage.enabled=true' \
       . | tee /dev/stderr |
       yq -r '.spec.volumeClaimTemplates | length' | tee /dev/stderr)
   [ "${actual}" = "0" ]
@@ -618,14 +614,44 @@ local value=$(echo $rendered |
       --show-only templates/server-statefulset.yaml  \
       --set 'server.ha.enabled=true' \
       --set 'server.auditStorage.enabled=true' \
-      --set 'server.dataStorage.enabled=true' \
       . | tee /dev/stderr |
       yq -r '.spec.volumeClaimTemplates | length' | tee /dev/stderr)
   [ "${actual}" = "1" ]
 }
 
-#--------------------------------------------------------------------
-# topologySpreadConstraints
+@test "server/ha-StatefulSet: raft backend always creates the data PVC" {
+  cd `chart_dir`
+  # DATA-03: with integrated Raft the store lives on /openbao/data, so the data
+  # PVC is mandatory and always created (there is no dataStorage.enabled toggle).
+  local actual=$(helm template \
+      --show-only templates/server-statefulset.yaml  \
+      --set 'server.dev_mode.enabled=false' \
+      --set 'server.ha.enabled=true' \
+      --set 'server.ha.raft.enabled=true' \
+      --set 'server.auditStorage.enabled=false' \
+      . | tee /dev/stderr |
+      yq -r '.spec.volumeClaimTemplates | length' | tee /dev/stderr)
+  [ "${actual}" = "1" ]
+
+  local name=$(helm template \
+      --show-only templates/server-statefulset.yaml  \
+      --set 'server.dev_mode.enabled=false' \
+      --set 'server.ha.enabled=true' \
+      --set 'server.ha.raft.enabled=true' \
+      . | tee /dev/stderr |
+      yq -r '.spec.volumeClaimTemplates[0].metadata.name' | tee /dev/stderr)
+  [ "${name}" = "data" ]
+
+  # The data mount is present on the container.
+  local mount=$(helm template \
+      --show-only templates/server-statefulset.yaml  \
+      --set 'server.dev_mode.enabled=false' \
+      --set 'server.ha.enabled=true' \
+      --set 'server.ha.raft.enabled=true' \
+      . | tee /dev/stderr |
+      yq -r '.spec.template.spec.containers[0].volumeMounts[] | select(.name == "data") | .mountPath' | tee /dev/stderr)
+  [ "${mount}" = "/openbao/data" ]
+}
 
 @test "server/ha-StatefulSet: topologySpreadConstraints is null by default" {
   cd `chart_dir`

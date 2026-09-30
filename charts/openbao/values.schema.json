@@ -106,9 +106,6 @@
                         "annotations": {
                             "type": ["object", "string"]
                         },
-                        "enabled": {
-                            "type": ["boolean", "string"]
-                        },
                         "labels": {
                             "type": ["object", "string"]
                         },

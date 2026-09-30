@@ -116,8 +116,10 @@ The chart deploys the following Kubernetes resources
   non-expiring token secret.
 - **PodDisruptionBudget** (`server-disruptionbudget.yaml`) — availability during
   voluntary disruptions (HA).
-- **Persistent Volume Claims** — created from `server.dataStorage` and
-  `server.auditStorage`.
+- **Persistent Volume Claims** — the data PVC (`server.dataStorage`) is always
+  created for the file/raft backends (standalone, HA raft, dev); it has no
+  opt-out because those backends persist to disk. The audit PVC
+  (`server.auditStorage`) is opt-in via `server.auditStorage.enabled`.
 
 ### Services
 - **Client Service** (`server-service.yaml`) — main client entry point, port

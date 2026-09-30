@@ -32,7 +32,6 @@ server:
 
   # Persistent storage for the file backend (data survives restarts).
   dataStorage:
-    enabled: true
     size: 10Gi
 ui:
   enabled: true

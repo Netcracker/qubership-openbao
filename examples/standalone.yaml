@@ -19,7 +19,6 @@ server:
 
   # Persistent storage for the file backend.
   dataStorage:
-    enabled: true
     size: 10Gi
     mountPath: /openbao/data
     # storageClass: my-storage-class

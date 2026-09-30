@@ -41,8 +41,7 @@ the most commonly used parameters.
 | `server.tls.certManager.clusterIssuerName` | Use an existing ClusterIssuer | `""` |
 | `server.service.enabled` | Create the client Service | `true` |
 | `server.service.port` | Client Service port | `8200` |
-| `server.dataStorage.enabled` | Create the data PVC (file/raft backends) | `true` |
-| `server.dataStorage.size` | Data PVC size | `10Gi` |
+| `server.dataStorage.size` | Data PVC size (PVC always created for file/raft backends; persistence is mandatory) | `10Gi` |
 | `server.dataStorage.mountPath` | Data mount path | `/openbao/data` |
 | `server.dataStorage.storageClass` | Data PVC StorageClass (null = default) | `null` |
 | `server.auditStorage.enabled` | Create the audit-log PVC | `false` |

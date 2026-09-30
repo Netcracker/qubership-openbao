@@ -50,10 +50,9 @@ Kubernetes: `>= 1.30.0-0`
 | server.configAnnotation | bool | `false` |  |
 | server.dataStorage.accessMode | string | `"ReadWriteOnce"` |  |
 | server.dataStorage.annotations | object | `{}` |  |
-| server.dataStorage.enabled | bool | `true` |  |
 | server.dataStorage.labels | object | `{}` |  |
 | server.dataStorage.mountPath | string | `"/openbao/data"` |  |
-| server.dataStorage.size | string | `"10Gi"` |  |
+| server.dataStorage.size | string | `"10Gi"` | Size of the data PVC. Data persistence is mandatory for the file/raft backends (standalone, HA raft, dev); the chart always creates this PVC and there is no `enabled` switch. |
 | server.dataStorage.storageClass | string | `nil` |  |
 | server.dev_mode.config | string | *(multi-line)* | HCL config for the persistent dev server (file storage backend on the data PVC). |
 | server.dev_mode.enabled | bool | `true` | Run OpenBao in persistent dev mode (file backend on the data PVC, auto-init and auto-unseal). Shipped default; development/testing only. Mutually exclusive with `server.ha.enabled`; the chart fails to render if both are `true`. |

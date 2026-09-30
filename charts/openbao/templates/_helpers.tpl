@@ -284,10 +284,8 @@ based on the mode configured.
               mountPath: {{ .Values.server.auditStorage.mountPath }}
   {{ end }}
   {{ if or (eq .mode "standalone") (eq .mode "dev") (and (eq .mode "ha") (eq (.Values.server.ha.raft.enabled | toString) "true"))  }}
-    {{ if eq (.Values.server.dataStorage.enabled | toString) "true" }}
             - name: data
               mountPath: {{ .Values.server.dataStorage.mountPath }}
-    {{ end }}
   {{ end }}
   {{ if and (ne .mode "dev") (or (.Values.server.standalone.config)  (.Values.server.ha.config)) }}
             - name: config
@@ -313,14 +311,20 @@ based on the mode configured.
 {{- end -}}
 
 {{/*
-Set's up the volumeClaimTemplates when data or audit storage is required.  HA
-might not use data storage since Consul is likely it's backend, however, audit
-storage might be desired by the user.
+Set's up the volumeClaimTemplates when data or audit storage is required.
+
+Data storage is mandatory whenever the selected backend keeps its data on a
+local path: standalone (file backend), HA with integrated Raft, and the
+persistent dev mode. For those modes the data PVC is always created — there is
+no opt-out — because dropping it silently sends the store to the container
+layer and loses all data on every restart. Audit storage remains opt-in via
+server.auditStorage.enabled.
 */}}
 {{- define "openbao.volumeclaims" -}}
-  {{- if and (ne .mode "dev") (or .Values.server.dataStorage.enabled .Values.server.auditStorage.enabled) }}
+  {{- $dataOnDisk := or (eq .mode "standalone") (and (eq .mode "ha") (eq (.Values.server.ha.raft.enabled | toString) "true")) -}}
+  {{- if and (ne .mode "dev") (or $dataOnDisk (eq (.Values.server.auditStorage.enabled | toString) "true")) }}
   volumeClaimTemplates:
-      {{- if and (eq (.Values.server.dataStorage.enabled | toString) "true") (or (eq .mode "standalone") (eq (.Values.server.ha.raft.enabled | toString ) "true" )) }}
+      {{- if $dataOnDisk }}
     - apiVersion: v1
       kind: PersistentVolumeClaim
       metadata:
@@ -354,7 +358,7 @@ storage might be desired by the user.
         storageClassName: {{ .Values.server.auditStorage.storageClass }}
           {{- end }}
       {{ end }}
-  {{- else if and (eq .mode "dev") (eq (.Values.server.dataStorage.enabled | toString) "true") }}
+  {{- else if eq .mode "dev" }}
   # Persistent dev mode: create the data PVC so file storage survives restarts.
   volumeClaimTemplates:
     - apiVersion: v1
@@ -872,8 +876,9 @@ Sets extra statefulset annotations
 Sets VolumeClaim annotations for data volume
 */}}
 {{- define "openbao.dataVolumeClaim.annotations" -}}
+  {{- $dataOnDisk := or (eq .mode "standalone") (and (eq .mode "ha") (eq (.Values.server.ha.raft.enabled | toString) "true")) -}}
   {{- $generic := .Values.server.dataStorage.annotations -}}
-  {{- if and (ne .mode "dev") (.Values.server.dataStorage.enabled) $generic }}
+  {{- if and (ne .mode "dev") $dataOnDisk $generic }}
   annotations:
     {{- include "openbao.annotations.render.4" (list . $generic) -}}
   {{- end }}
@@ -883,7 +888,8 @@ Sets VolumeClaim annotations for data volume
 Sets VolumeClaim labels for data volume
 */}}
 {{- define "openbao.dataVolumeClaim.labels" -}}
-  {{- if and (ne .mode "dev") (.Values.server.dataStorage.enabled) (.Values.server.dataStorage.labels) }}
+  {{- $dataOnDisk := or (eq .mode "standalone") (and (eq .mode "ha") (eq (.Values.server.ha.raft.enabled | toString) "true")) -}}
+  {{- if and (ne .mode "dev") $dataOnDisk (.Values.server.dataStorage.labels) }}
   labels:
     {{- $tp := typeOf .Values.server.dataStorage.labels }}
     {{- if eq $tp "string" }}

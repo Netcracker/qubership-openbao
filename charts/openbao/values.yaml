@@ -703,11 +703,15 @@ server:
     # This should be a YAML map of the labels to apply to the service
     extraLabels: {}
 
-  # This configures the OpenBao Statefulset to create a PVC for data
-  # storage when using the file or raft backend storage engines.
+  # This configures the OpenBao StatefulSet's data PVC for the file and raft
+  # backend storage engines. Data persistence is mandatory and cannot be turned
+  # off: for standalone (file), HA with integrated Raft, and the persistent dev
+  # mode the chart always creates a PersistentVolumeClaim mounted at mountPath.
+  # There is deliberately no `enabled` switch — disabling it would send the
+  # store to the ephemeral container layer and lose all data on every restart
+  # (and, in HA/raft, drop the node from quorum).
   # See https://openbao.org/docs/configuration/storage to know more
   dataStorage:
-    enabled: true
     # Size of the PVC created
     size: 10Gi
     # Location where the PVC will be mounted.

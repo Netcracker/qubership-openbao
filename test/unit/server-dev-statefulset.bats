@@ -328,7 +328,6 @@ load _helpers
   local actual=$(helm template \
       --show-only templates/server-statefulset.yaml  \
       --set 'server.dev.enabled=true' \
-      --set 'server.dataStorage.enabled=true' \
       --set 'server.dataStorage.storageClass=foo' \
       . | tee /dev/stderr |
       yq -r '.spec.volumeClaimTemplates' | tee /dev/stderr)
