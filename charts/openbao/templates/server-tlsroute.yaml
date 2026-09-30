@@ -7,7 +7,10 @@ and OpenBao terminates TLS. This matches the seaweedfs passthrough mode used
 when the certificate is not chart-generated (source=rawCerts / existingSecret).
 Only rendered when the TLSRoute CRD is present in the cluster.
 */ -}}
-{{- if and .Values.server.gateway.tlsRoute.enabled $tlsRouteCRD -}}
+{{- if .Values.server.gateway.tlsRoute.enabled -}}
+{{- if not $tlsRouteCRD -}}
+{{- fail (printf "server.gateway.tlsRoute.enabled=true, but %s/TLSRoute is not served by this cluster. Install the Gateway API channel that provides TLSRoute, or set server.gateway.tlsRoute.apiVersion to a version this cluster serves." .Values.server.gateway.tlsRoute.apiVersion) -}}
+{{- end -}}
 {{- $serviceName := include "openbao.fullname" . -}}
 {{- template "openbao.serverServiceEnabled" . -}}
 {{- if .serverServiceEnabled -}}
