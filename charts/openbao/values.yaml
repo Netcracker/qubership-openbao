@@ -62,10 +62,14 @@ server:
 
   #image: quay.io/openbao/openbao:2.5
   image:
-    # -- image registry to use for server image
+    # -- image registry to use for server image. Prepended to `repository` to
+    # form the full image reference (registry/repository:tag). Override this for
+    # air-gapped / internal-mirror installs, e.g.
+    # --set server.image.registry=my-mirror.internal.example.com
     registry: "quay.io"
-    # -- image repo to use for server image
-    repository: "quay.io/openbao/openbao"
+    # -- image repo to use for server image, WITHOUT the registry host (that is
+    # `registry` above). The final reference is `registry/repository:tag`.
+    repository: "openbao/openbao"
     # -- image tag to use for server image - defaults to chart appVersion
     tag: "2.6.2"
     # -- image pull policy to use for server image. if tag is "latest", set to "Always"

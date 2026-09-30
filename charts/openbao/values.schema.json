@@ -320,6 +320,9 @@
                 "image": {
                     "type": "object",
                     "properties": {
+                        "registry": {
+                            "type": "string"
+                        },
                         "pullPolicy": {
                             "type": "string"
                         },

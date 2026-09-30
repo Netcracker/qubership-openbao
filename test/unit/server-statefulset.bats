@@ -138,6 +138,28 @@ load _helpers
   [ "${actual}" = "quay.io/foo:${appVersion}" ]
 }
 
+@test "server/standalone-StatefulSet: image registry is overridable (DEP-02)" {
+  cd `chart_dir`
+  # Overriding the registry must change the rendered image reference.
+  local actual=$(helm template \
+      --show-only templates/server-statefulset.yaml  \
+      --set 'server.image.registry=my-mirror.internal.example.com' \
+      --set 'server.image.repository=foo' \
+      --set 'server.image.tag=1.2.3' \
+      . | tee /dev/stderr |
+      yq -r '.spec.template.spec.containers[0].image' | tee /dev/stderr)
+  [ "${actual}" = "my-mirror.internal.example.com/foo:1.2.3" ]
+
+  # Default registry composes as registry/repository:tag.
+  local actual=$(helm template \
+      --show-only templates/server-statefulset.yaml  \
+      --set 'server.image.repository=foo' \
+      --set 'server.image.tag=1.2.3' \
+      . | tee /dev/stderr |
+      yq -r '.spec.template.spec.containers[0].image' | tee /dev/stderr)
+  [ "${actual}" = "quay.io/foo:1.2.3" ]
+}
+
 @test "server/standalone-StatefulSet: default imagePullPolicy" {
   cd `chart_dir`
   local actual=$(helm template \

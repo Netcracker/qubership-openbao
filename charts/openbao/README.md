@@ -103,8 +103,8 @@ Kubernetes: `>= 1.30.0-0`
 | server.hostAliases | list | `[]` |  |
 | server.hostNetwork | bool | `false` |  |
 | server.image.pullPolicy | string | `"IfNotPresent"` | image pull policy to use for server image. if tag is "latest", set to "Always" |
-| server.image.registry | string | `"quay.io"` | image registry to use for server image |
-| server.image.repository | string | `"openbao/openbao"` | image repo to use for server image |
+| server.image.registry | string | `"quay.io"` | Image registry for the server image. Prepended to `repository` to form the full reference `registry/repository:tag`; override for air-gapped / internal-mirror installs. |
+| server.image.repository | string | `"openbao/openbao"` | Image repository for the server image, WITHOUT the registry host (see `registry`). |
 | server.image.tag | string | `""` | image tag to use for server image - defaults to chart appVersion |
 | server.ingress.activeService | bool | `true` |  |
 | server.ingress.annotations | object | `{}` |  |

@@ -17,8 +17,8 @@ the most commonly used parameters.
 | `global.openshift` | Deploy to OpenShift (use `server.route` for exposure) | `false` |
 | `global.serverTelemetry.prometheusOperator` | Enable Prometheus Operator integration | `false` |
 | `server.enabled` | Install the OpenBao server (`"-"` follows `global.enabled`) | `"-"` |
-| `server.image.registry` | Server image registry | `"quay.io"` |
-| `server.image.repository` | Server image repository | `"quay.io/openbao/openbao"` |
+| `server.image.registry` | Server image registry, prepended to `repository` (`registry/repository:tag`); override for air-gapped mirrors | `"quay.io"` |
+| `server.image.repository` | Server image repository, without the registry host | `"openbao/openbao"` |
 | `server.image.tag` | Server image tag | `"2.5"` |
 | `server.image.pullPolicy` | Server image pull policy | `IfNotPresent` |
 | `server.updateStrategyType` | StatefulSet update strategy | `"OnDelete"` |
