@@ -1173,6 +1173,43 @@ Used for BAO_CACERT, probes and in-cluster verification.
 {{- end -}}
 
 {{/*
+Validate the server TLS configuration and fail rendering with an explicit
+message on the silent-misconfiguration cases where the two TLS switches
+(global.tlsDisable and server.tls.*) disagree. Rendered for server modes only
+(callers guard on serverEnabled and non-external mode).
+
+Cases caught:
+  1. TLS is disabled (global.tlsDisable=true) but the operator supplied server
+     TLS material (server.tls.certs.crt/key/ca or a non-empty
+     server.tls.secretName). The material would be discarded silently and the
+     listener would run plain HTTP. -> tell them to set global.tlsDisable=false.
+  2. TLS is enabled (global.tlsDisable=false) with source=rawCerts but crt/key
+     are missing. The pod would mount a Secret that no template creates.
+  3. TLS is enabled with source=existingSecret but server.tls.secretName is
+     empty. The pod would mount the default <fullname>-tls Secret that no
+     template creates.
+*/}}
+{{- define "openbao.tls.validate" -}}
+{{- $tls := .Values.server.tls -}}
+{{- $material := or $tls.certs.crt $tls.certs.key $tls.certs.ca $tls.secretName -}}
+{{- if .Values.global.tlsDisable -}}
+  {{- if $material -}}
+    {{- fail "server.tls material is set (server.tls.certs.* or server.tls.secretName) but global.tlsDisable is true: the TLS material would be discarded and the listener would serve plain HTTP. Set global.tlsDisable=false to enable TLS, or clear server.tls material." -}}
+  {{- end -}}
+{{- else -}}
+  {{- if eq $tls.source "rawCerts" -}}
+    {{- if not (and $tls.certs.crt $tls.certs.key) -}}
+      {{- fail "server.tls.source=rawCerts with global.tlsDisable=false requires both server.tls.certs.crt and server.tls.certs.key to be set; otherwise the server pod mounts a TLS Secret that is never created." -}}
+    {{- end -}}
+  {{- else if eq $tls.source "existingSecret" -}}
+    {{- if not $tls.secretName -}}
+      {{- fail "server.tls.source=existingSecret with global.tlsDisable=false requires server.tls.secretName to name the pre-existing kubernetes.io/tls Secret; otherwise the server pod mounts a default <fullname>-tls Secret that is never created." -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 imagePullSecrets generates pull secrets from either string or map values.
 A map value must be indexable by the key 'name'.
 */}}

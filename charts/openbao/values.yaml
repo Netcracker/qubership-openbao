@@ -30,7 +30,10 @@ global:
   # imagePullSecrets:
   #   - name: image-pull-secret
 
-  # -- TLS for end-to-end encrypted transport
+  # -- TLS for end-to-end encrypted transport. This is the single switch that
+  # turns server TLS on/off; the server.tls.* block only takes effect when this
+  # is false. The chart cross-validates the two and fails rendering if server
+  # TLS material is supplied while this stays true (see server.tls).
   tlsDisable: true
 
   # -- External openbao server address for the injector and CSI provider to use.
@@ -472,6 +475,15 @@ server:
 
   # -- TLS configuration for the OpenBao server listener (end-to-end encryption).
   # This block is only effective when `global.tlsDisable` is set to `false`.
+  # The two switches are cross-validated at render time (see the
+  # `openbao.tls.validate` helper): the chart fails `helm template`/`install`
+  # with an explicit error when they disagree, instead of silently serving plain
+  # HTTP or mounting a non-existent Secret. Specifically:
+  #   * setting any TLS material here (certs.crt/key/ca or secretName) while
+  #     global.tlsDisable=true fails — set global.tlsDisable=false to enable TLS;
+  #   * source=rawCerts with global.tlsDisable=false requires certs.crt and
+  #     certs.key;
+  #   * source=existingSecret with global.tlsDisable=false requires secretName.
   # When enabled, the server listener is configured with `tls_cert_file` /
   # `tls_key_file`, the TLS secret is mounted into the server pod, `BAO_CACERT`
   # is exported so that in-cluster traffic and probes verify the server

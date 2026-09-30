@@ -36,7 +36,7 @@ Kubernetes: `>= 1.30.0-0`
 | global.namespace | string | `""` | The namespace to deploy to. Defaults to the `helm` installation namespace. |
 | global.openshift | bool | `false` | If deploying to OpenShift |
 | global.serverTelemetry.prometheusOperator | bool | `false` | Enable integration with the Prometheus Operator See the top level serverTelemetry section below before enabling this feature. |
-| global.tlsDisable | bool | `true` | TLS for end-to-end encrypted transport |
+| global.tlsDisable | bool | `true` | Single switch for server TLS (end-to-end encrypted transport). The `server.tls.*` block only takes effect when this is `false`; the chart cross-validates the two and fails rendering if server TLS material is set while this stays `true`, if `source=rawCerts` lacks `certs.crt`/`certs.key`, or if `source=existingSecret` lacks `secretName`. |
 | server.affinity | string | `"podAntiAffinity:\n  requiredDuringSchedulingIgnoredDuringExecution:\n    - labelSelector:\n        matchLabels:\n          app.kubernetes.io/name: {{ template \"openbao.name\" . }}\n          app.kubernetes.io/instance: \"{{ .Release.Name }}\"\n          component: server\n      topologyKey: kubernetes.io/hostname\n"` |  |
 | server.annotations | object | `{}` |  |
 | server.auditStorage.accessMode | string | `"ReadWriteOnce"` |  |
@@ -186,7 +186,7 @@ Kubernetes: `>= 1.30.0-0`
 | server.statefulSet.securityContext.container | object | `{}` |  |
 | server.statefulSet.securityContext.pod | object | `{}` |  |
 | server.terminationGracePeriodSeconds | int | `10` |  |
-| server.tls.source | string | `"certManager"` | How the server TLS certificate is provisioned: `certManager`, `rawCerts` or `existingSecret`. Only effective when `global.tlsDisable=false`. |
+| server.tls.source | string | `"certManager"` | How the server TLS certificate is provisioned: `certManager`, `rawCerts` or `existingSecret`. Only effective when `global.tlsDisable=false`. `rawCerts` requires `server.tls.certs.crt`/`key`; `existingSecret` requires `server.tls.secretName`; supplying TLS material while `global.tlsDisable=true` fails rendering. |
 | server.tls.secretName | string | `""` | Name of the kubernetes.io/tls secret with the server cert. Defaults to `<fullname>-tls`. |
 | server.tls.certs.crt | string | `""` | Inline PEM certificate (source=rawCerts). |
 | server.tls.certs.key | string | `""` | Inline PEM private key (source=rawCerts). |

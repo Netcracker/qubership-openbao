@@ -115,3 +115,89 @@ load _helpers
       yq -r '.spec.template.spec.containers[0].readinessProbe.exec.command[2]' | tee /dev/stderr)
   [ "${actual}" = "bao status -tls-skip-verify" ]
 }
+
+# --- cross-validation of the two TLS switches (UX-02) ---
+
+@test "server/tls: default install (TLS off, no material) renders cleanly" {
+  cd `chart_dir`
+  run helm template . --show-only templates/server-config-configmap.yaml
+  [ "$status" -eq 0 ]
+}
+
+@test "server/tls: supplying certs while tlsDisable=true fails" {
+  cd `chart_dir`
+  run helm template \
+      --set 'server.tls.certs.crt=CRT' \
+      --set 'server.tls.certs.key=KEY' \
+      .
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"global.tlsDisable"* ]]
+}
+
+@test "server/tls: supplying secretName while tlsDisable=true fails" {
+  cd `chart_dir`
+  run helm template \
+      --set 'server.tls.secretName=my-tls' \
+      .
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"global.tlsDisable"* ]]
+}
+
+@test "server/tls: rawCerts without cert material fails" {
+  cd `chart_dir`
+  run helm template \
+      --set 'global.tlsDisable=false' \
+      --set 'server.tls.source=rawCerts' \
+      .
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"rawCerts"* ]]
+}
+
+@test "server/tls: rawCerts with crt and key renders and creates the Secret" {
+  cd `chart_dir`
+  run helm template \
+      --set 'global.tlsDisable=false' \
+      --set 'server.tls.source=rawCerts' \
+      --set 'server.tls.certs.crt=CRT' \
+      --set 'server.tls.certs.key=KEY' \
+      .
+  [ "$status" -eq 0 ]
+
+  local secret=$(helm template \
+      --show-only templates/server-tls-raw-secret.yaml \
+      --set 'global.tlsDisable=false' \
+      --set 'server.tls.source=rawCerts' \
+      --set 'server.tls.certs.crt=CRT' \
+      --set 'server.tls.certs.key=KEY' \
+      . | tee /dev/stderr |
+      yq -r '.kind' | tee /dev/stderr)
+  [ "${secret}" = "Secret" ]
+}
+
+@test "server/tls: existingSecret without secretName fails" {
+  cd `chart_dir`
+  run helm template \
+      --set 'global.tlsDisable=false' \
+      --set 'server.tls.source=existingSecret' \
+      .
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"existingSecret"* ]]
+}
+
+@test "server/tls: existingSecret with secretName renders" {
+  cd `chart_dir`
+  run helm template \
+      --set 'global.tlsDisable=false' \
+      --set 'server.tls.source=existingSecret' \
+      --set 'server.tls.secretName=my-existing-tls' \
+      .
+  [ "$status" -eq 0 ]
+}
+
+@test "server/tls: certManager with TLS on renders (default source)" {
+  cd `chart_dir`
+  run helm template \
+      --set 'global.tlsDisable=false' \
+      .
+  [ "$status" -eq 0 ]
+}

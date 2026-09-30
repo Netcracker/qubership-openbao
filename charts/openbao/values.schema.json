@@ -536,6 +536,43 @@
                 },
                 "tls": {
                     "type": "object",
+                    "allOf": [
+                        {
+                            "if": {
+                                "properties": {
+                                    "source": { "const": "rawCerts" }
+                                },
+                                "required": ["source"]
+                            },
+                            "then": {
+                                "properties": {
+                                    "certs": {
+                                        "type": "object",
+                                        "properties": {
+                                            "crt": { "type": "string", "minLength": 1 },
+                                            "key": { "type": "string", "minLength": 1 }
+                                        },
+                                        "required": ["crt", "key"]
+                                    }
+                                },
+                                "required": ["certs"]
+                            }
+                        },
+                        {
+                            "if": {
+                                "properties": {
+                                    "source": { "const": "existingSecret" }
+                                },
+                                "required": ["source"]
+                            },
+                            "then": {
+                                "properties": {
+                                    "secretName": { "type": "string", "minLength": 1 }
+                                },
+                                "required": ["secretName"]
+                            }
+                        }
+                    ],
                     "properties": {
                         "source": {
                             "type": "string",
