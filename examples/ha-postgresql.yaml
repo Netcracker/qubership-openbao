@@ -1,0 +1,143 @@
+# yaml-language-server: $schema=../charts/openbao/values.schema.json
+#
+# Example: HA with an external PostgreSQL storage backend
+# =======================================================
+#
+# Why this file exists: the chart default for HA without Raft
+# (server.ha.config) uses `storage "consul"`. OpenBao 2.x has no Consul
+# storage backend, so that default cannot start. PostgreSQL is the supported
+# external, HA-capable backend.
+#
+# What you get:
+#   * 2 OpenBao servers sharing one PostgreSQL database (no data PVCs);
+#   * one active node, one standby; Services openbao-active / openbao-standby;
+#   * TLS via cert-manager.
+#
+# Prerequisites:
+#   * PostgreSQL >= 9.5 reachable from the cluster, with a database and a user;
+#     OpenBao creates the tables openbao_kv_store and openbao_ha_locks unless
+#     skip_create_table = "true";
+#   * the connection URL in a Secret (keeps the password out of the ConfigMap):
+#
+#       kubectl -n openbao create secret generic openbao-pg \
+#         --from-literal=url='postgres://openbao:<password>@pg.example.com:5432/openbao?sslmode=verify-full'
+#
+#   * cert-manager.
+#
+# Install:
+#   helm upgrade --install openbao ./charts/openbao \
+#     -n openbao --create-namespace -f examples/ha-postgresql.yaml
+#
+# First start: initialize once, then unseal EVERY pod (no raft join step):
+#   examples/scripts/init-unseal.sh -n openbao -r openbao -p 2 --no-raft
+#
+# Backups: use PostgreSQL backups (pg_dump / PITR). The snapshot agent only
+# works with Raft.
+#
+# Docs: docs/chart/09-deployment-modes.md#5-ha-with-external-storage
+
+global:
+  tlsDisable: false
+
+server:
+  dev_mode:
+    enabled: false
+
+  ha:
+    enabled: true
+    replicas: 2
+    raft:
+      enabled: false     # use server.ha.config below
+
+    config: |
+      ui = true
+      {{- $tls := .Values.server.tls }}
+
+      listener "tcp" {
+        address         = "[::]:8200"
+        cluster_address = "[::]:8201"
+        {{- if .Values.global.tlsDisable }}
+        tls_disable = 1
+        {{- else }}
+        tls_cert_file   = "{{ $tls.mountPath }}/{{ $tls.certKey }}"
+        tls_key_file    = "{{ $tls.mountPath }}/{{ $tls.keyKey }}"
+        tls_min_version = "{{ $tls.tlsMinVersion }}"
+        {{- end }}
+      }
+
+      # connection_url is read from BAO_PG_CONNECTION_URL (see below).
+      storage "postgresql" {
+        ha_enabled          = "true"
+        # 0 = retry forever while the database is unavailable. The default (1)
+        # makes the server exit almost immediately on a database outage.
+        max_connect_retries = 0
+        max_parallel        = "64"
+      }
+
+      service_registration "kubernetes" {}
+
+      telemetry {
+        prometheus_retention_time = "60s"
+        disable_hostname          = true
+      }
+
+    disruptionBudget:
+      enabled: true
+      # Required for 2 replicas: the computed default would be 0 and block
+      # node drains. There is no Raft quorum among OpenBao pods here.
+      maxUnavailable: 1
+
+  # Database credentials from a Secret. The variable name is defined by the
+  # OpenBao PostgreSQL backend.
+  extraSecretEnvironmentVars:
+    - envName: BAO_PG_CONNECTION_URL
+      secretName: openbao-pg
+      secretKey: url
+
+  # Optional: CA for sslmode=verify-full when the database uses a private CA.
+  # libpq/pgx read PGSSLROOTCERT.
+  # volumes:
+  #   - name: pg-ca
+  #     secret:
+  #       secretName: pg-ca
+  # volumeMounts:
+  #   - name: pg-ca
+  #     mountPath: /openbao/userconfig/pg-ca
+  #     readOnly: true
+  # extraEnvironmentVars:
+  #   PGSSLROOTCERT: /openbao/userconfig/pg-ca/ca.crt
+
+  podManagementPolicy: Parallel
+  updateStrategyType: OnDelete
+
+  tls:
+    source: certManager
+    certManager:
+      generateIssuer: true
+      # clusterIssuerName: corp-ca
+
+  # No data PVC is created for an external backend. Audit storage still works.
+  auditStorage:
+    enabled: true
+    size: 5Gi
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+  logFormat: json
+
+  statefulSet:
+    securityContext:
+      container:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+
+ui:
+  enabled: true
+  activeOpenbaoPodOnly: true

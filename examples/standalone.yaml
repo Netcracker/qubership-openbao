@@ -1,43 +1,114 @@
-# Example values: standalone mode (file storage backend, single replica).
-# Not highly available. Server starts sealed and must be initialized/unsealed.
+# yaml-language-server: $schema=../charts/openbao/values.schema.json
+#
+# Example: standalone mode (single replica, file backend, TLS via cert-manager)
+# ============================================================================
+#
+# Use for: small internal installations that accept downtime during restarts.
+# For production with availability requirements, use examples/ha-raft.yaml.
+#
+# Prerequisites:
+#   * cert-manager installed (the chart creates a Certificate and, here, a
+#     self-signed Issuer). Without cert-manager, `helm install` fails with
+#     `no matches for kind "Certificate"`.
+#   * a default StorageClass, or set server.dataStorage.storageClass.
 #
 # Install:
-#   helm install openbao ./charts/openbao -n openbao --create-namespace -f examples/standalone.yaml
+#   helm upgrade --install openbao ./charts/openbao \
+#     -n openbao --create-namespace -f examples/standalone.yaml
 #
-# After install:
-#   kubectl exec -n openbao openbao-0 -- bao operator init
-#   kubectl exec -n openbao openbao-0 -- bao operator unseal <key-share>
+# First start. The server starts UNINITIALIZED and SEALED; the pod stays
+# Running 0/1 until it is unsealed:
+#   examples/scripts/init-unseal.sh -n openbao -r openbao
+# or by hand:
+#   kubectl -n openbao exec openbao-0 -- bao operator init -key-shares=5 -key-threshold=3
+#   kubectl -n openbao exec openbao-0 -- bao operator unseal   # repeat 3 times
+#
+# After every pod restart the server is sealed again unless you add a seal
+# stanza (auto-unseal). See docs/chart/12-advanced.md#2-auto-unseal.
+#
+# Enable the audit device once, after unseal and login:
+#   kubectl -n openbao exec openbao-0 -- bao audit enable file file_path=/openbao/audit/audit.log
+#
+# Docs: docs/chart/09-deployment-modes.md#3-standalone-mode
 
 global:
+  # Turn TLS on. The server.tls.* block below only takes effect when this is
+  # false. The chart fails to render if TLS material is set while this is true.
   tlsDisable: false
 
 server:
   dev_mode:
-    enabled: false
+    enabled: false        # no auto-init/auto-unseal, no keys on disk
+
   standalone:
     enabled: true
+    # The default server.standalone.config is used. It already switches the
+    # listener to TLS when global.tlsDisable is false. If you override it,
+    # copy the default from charts/openbao/values.yaml and keep the
+    # `{{- if .Values.global.tlsDisable }}` block.
 
-  # Persistent storage for the file backend.
-  dataStorage:
-    size: 10Gi
-    mountPath: /openbao/data
-    # storageClass: my-storage-class
-
-  resources:
-    requests:
-      memory: 256Mi
-      cpu: 250m
-    limits:
-      memory: 256Mi
-      cpu: 250m
-
-  # End-to-end TLS via cert-manager, with the chart bootstrapping its own issuer.
   tls:
     source: certManager
     tlsMinVersion: tls12
     certManager:
+      # The chart creates a self-signed Issuer `<fullname>-issuer`.
+      # For production prefer a corporate CA: set clusterIssuerName instead
+      # (it takes precedence over generateIssuer).
       generateIssuer: true
-      durationDays: 365
+      # clusterIssuerName: corp-ca
+      duration: 8760h       # 1 year
+      renewBefore: 720h     # renew 30 days before expiry
+      # Add the external host name if you expose OpenBao with TLS passthrough.
+      extraSans: []
+      # - openbao.example.com
+
+  dataStorage:
+    size: 10Gi
+    # Must match `path` in the storage "file" block of the config.
+    mountPath: /openbao/data
+    # storageClass: premium-ssd
+
+  # Opt-in volume for the file audit device (enabled inside OpenBao later).
+  auditStorage:
+    enabled: true
+    size: 5Gi
+
+  # Keep data when the release is uninstalled or the StatefulSet is deleted.
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+
+  # Guaranteed QoS: requests equal limits.
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+  logLevel: info
+  logFormat: json
+
+  # Give OpenBao time to shut down cleanly: preStop sleeps, then sends SIGTERM.
+  preStopSleepSeconds: 5
+  terminationGracePeriodSeconds: 30
+
+  # Adds a checksum of the rendered config to the pod, so you can see which
+  # pods still run an old config (updateStrategyType stays OnDelete).
+  configAnnotation: true
+
+  # Pod Security "restricted" compatible container settings. A non-empty
+  # value replaces the chart defaults completely.
+  statefulSet:
+    securityContext:
+      container:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
 
 ui:
+  # Creates the extra Service `openbao-ui` (ClusterIP). The UI itself is
+  # always served on the API port.
   enabled: true
+  serviceType: ClusterIP

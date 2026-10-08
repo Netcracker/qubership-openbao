@@ -1,38 +1,101 @@
-# Example values: persistent dev mode.
-# Uses the `file` storage backend on the data PVC, so data survives pod
-# restarts. The server is auto-initialized on first boot and auto-unsealed on
-# every (re)start (unseal keys are persisted on the data volume).
-# For development / testing only, not production.
+# yaml-language-server: $schema=../charts/openbao/values.schema.json
+#
+# Example: persistent dev mode (single replica, auto-init, auto-unseal)
+# =====================================================================
+#
+# Use for: local development, demos, CI. NOT for production or shared clusters.
+#
+# What you get:
+#   * one pod, `openbao-0`, using the `file` storage backend on a PVC, so data
+#     survives pod restarts;
+#   * a postStart hook that runs `bao operator init` on first start and
+#     unseals the server on every start;
+#   * the unseal key and the root token stored IN PLAIN TEXT at
+#     /openbao/data/bootstrap-keys.json on the same volume.
 #
 # Install:
-#   helm install openbao ./charts/openbao -n openbao --create-namespace -f examples/dev.yaml
+#   helm upgrade --install openbao ./charts/openbao \
+#     -n openbao --create-namespace -f examples/dev.yaml
+#
+# Verify:
+#   kubectl -n openbao wait --for=condition=Ready pod/openbao-0 --timeout=180s
+#   kubectl -n openbao exec openbao-0 -- bao status
+#   kubectl -n openbao exec openbao-0 -- cat /openbao/data/bootstrap-keys.json
+#   kubectl -n openbao exec openbao-0 -- cat /tmp/openbao.log   # bootstrap log
+#
+# Access from your workstation:
+#   kubectl -n openbao port-forward svc/openbao 8200:8200
+#   open http://127.0.0.1:8200/ui
+#
+# Remove everything (the PVC is NOT deleted by `helm uninstall`):
+#   helm uninstall openbao -n openbao
+#   kubectl -n openbao delete pvc data-openbao-0
+#
+# Docs: docs/chart/09-deployment-modes.md#2-dev-mode
 
 global:
-  # Dev mode always serves plain HTTP; keep TLS disabled.
-  tlsDisable: false
-server:
-  tls:
-    source: rawCerts
-    certs:
-      crt: |
-        -----BEGIN CERTIFICATE-----
-        -----END CERTIFICATE-----
-      key: |
-        -----BEGIN PRIVATE KEY-----
-        -----END PRIVATE KEY-----
-      ca: |
-        -----BEGIN CERTIFICATE-----
-        -----END CERTIFICATE-----
-  dev_mode:
-    enabled: true
-  ingress:
-    enabled: true
-    hosts:
-      - host: example.com
+  # Dev mode is meant to be simple: plain HTTP on port 8200.
+  # The previous version of this file enabled TLS with empty placeholder
+  # certificates, so the server could not start. To test TLS clients, use
+  # cert-manager instead (see docs/chart/09-deployment-modes.md#22-values).
+  tlsDisable: true
 
-  # Persistent storage for the file backend (data survives restarts).
+server:
+  dev_mode:
+    # Persistent dev mode. Mutually exclusive with server.ha.enabled; the chart
+    # fails to render if both are true.
+    enabled: true
+    # NOTE: server.dev_mode.config is currently NOT used by the chart. The dev
+    # server runs with server.standalone.config. Customize that value instead.
+    # See docs/chart/14-known-issues.md (#1).
+
+  # Dev mode runs in the standalone code path; keep this "-" or true.
+  # With `false`, no server pod is rendered at all.
+  standalone:
+    enabled: "-"
+
+  # Small PVC for the file backend. Data and bootstrap-keys.json live here.
   dataStorage:
-    size: 10Gi
+    size: 1Gi
+    # storageClass: standard          # omit to use the cluster default
+
+  # Delete the PVC together with the StatefulSet. Convenient for throw-away
+  # environments; remove this block if you want data to survive uninstall.
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Delete
+    whenScaled: Delete
+
+  # The default anti-affinity is "required" per node. With one replica it is
+  # harmless, but clearing it avoids surprises on single-node clusters.
+  affinity: ""
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+  logLevel: info
+
+  # Kubernetes auth needs a ClusterRoleBinding. Set to false if you install
+  # without cluster-admin rights and do not need the Kubernetes auth method.
+  authDelegator:
+    enabled: true
+
+  # Optional: expose through an Ingress controller (plain HTTP inside the
+  # cluster, TLS terminated by the controller).
+  # ingress:
+  #   enabled: true
+  #   ingressClassName: nginx
+  #   hosts:
+  #     - host: openbao.dev.example.com
+  #   tls:
+  #     - secretName: openbao-dev-tls
+  #       hosts: [openbao.dev.example.com]
+
+# The UI is always served on the API port (ui = true in the config).
+# `ui.enabled` only creates an extra Service named openbao-ui.
 ui:
-  enabled: true
-  serviceType: ClusterIP
+  enabled: false
