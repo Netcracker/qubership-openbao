@@ -771,7 +771,7 @@ server:
   # single-replica persistent server and cannot run in HA. The chart fails
   # to render if both are set to true.
   dev_mode:
-    enabled: true
+    enabled: false
 
     # -- HCL configuration for the persistent dev server.
     # NOTE: currently NOT rendered — dev mode uses server.standalone.config
@@ -808,7 +808,7 @@ server:
   # one replica. The Raft node ID is pinned to the pod name (BAO_RAFT_NODE_ID)
   # so it is stable across restarts and matches server.ha.raft.setNodeId=true.
   standalone:
-    enabled: "-"
+    enabled: "true"
 
     # Safety guard for upgrades from chart versions whose standalone mode used
     # the `file` storage backend. When true (default) the server container
