@@ -35,7 +35,7 @@ The default install creates these resources:
 | Kind | Name | Purpose |
 |------|------|---------|
 | `StatefulSet` | `openbao` | One server pod, `openbao-0` |
-| `PersistentVolumeClaim` | `data-openbao-0` | 10Gi `file` storage at `/openbao/data` |
+| `PersistentVolumeClaim` | `data-openbao-0` | 10Gi single-node integrated Raft storage at `/openbao/data` |
 | `ConfigMap` | `openbao-config` | Rendered server HCL configuration |
 | `Service` | `openbao` | Client endpoint on port `8200` (plus `8201`) |
 | `Service` | `openbao-internal` | Headless service for stable pod DNS |
@@ -83,16 +83,21 @@ Initialized     true
 Sealed          false
 Total Shares    1
 Threshold       1
-Storage Type    file
-HA Enabled      false
+Storage Type    raft
+HA Enabled      true
+HA Mode         active
 ```
+
+`HA Enabled true` only means the Raft machinery is on: the single pod is the
+leader of a one-node Raft cluster. There is no standby.
 
 `bao` CLI calls inside the pod need no extra flags. The chart sets
 `BAO_ADDR=http://127.0.0.1:8200` in the container environment.
 
 ### What happened on first start
 
-The chart starts the server with the `file` storage backend. A new OpenBao
+The chart starts the server with single-node integrated storage (Raft). A new
+OpenBao
 server always starts **uninitialized and sealed**. Because
 `server.dev_mode.enabled` is `true`, the chart adds a `postStart` hook to the
 container

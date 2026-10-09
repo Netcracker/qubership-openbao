@@ -3,11 +3,13 @@
 # Overlay: scheduled Raft snapshots to S3
 # =======================================
 #
-# Apply on top of examples/ha-raft.yaml (the snapshot API exists only for
-# integrated Raft storage; it does not work with file or PostgreSQL):
+# Apply on top of examples/ha-raft.yaml or examples/standalone.yaml (the
+# snapshot API exists only for integrated Raft storage, which both use; it does
+# not work with PostgreSQL or a custom `file` config):
 #
 #   helm upgrade --install openbao ./charts/openbao -n openbao \
 #     -f examples/ha-raft.yaml -f examples/overlays/snapshot-s3.yaml
+#   # or: -f examples/standalone.yaml -f examples/overlays/snapshot-s3.yaml
 #
 # Before enabling (in this order):
 #   1. Configure Kubernetes auth, the `snapshot` policy and the role, bound to
@@ -69,7 +71,8 @@ snapshotAgent:
     baoAuthPath: kubernetes
     baoRole: snapshot
 
-  # BAO_ADDR is computed by the chart (openbao-active in HA). There is no
+  # BAO_ADDR is computed by the chart (openbao-active in HA, openbao in
+  # standalone). There is no
   # snapshotAgent.config.baoAddr value; to override, set it here:
   # extraEnvironmentVars:
   #   BAO_ADDR: https://openbao-active.openbao.svc:8200

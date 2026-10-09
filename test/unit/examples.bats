@@ -39,15 +39,36 @@ examples_dir() {
 #--------------------------------------------------------------------
 # standalone.yaml
 
-@test "examples/standalone: TLS listener and certificate" {
+@test "examples/standalone: TLS listener, single-node raft storage and certificate" {
   cd `chart_dir`
   local cm=$(helm template . $(api_versions) -f $(examples_dir)/standalone.yaml \
       --show-only templates/server-config-configmap.yaml | yq -r '.data["extraconfig-from-values.hcl"]')
   echo "$cm" | grep -q 'tls_cert_file = "/openbao/tls/tls.crt"'
-  echo "$cm" | grep -q 'storage "file"'
+  echo "$cm" | grep -q 'storage "raft"'
+  echo "$cm" | grep -q 'path = "/openbao/data"'
+  # Single node: no joins, no Kubernetes service registration.
+  [ -z "$(echo "$cm" | grep 'retry_join')" ]
+  [ -z "$(echo "$cm" | grep 'service_registration')" ]
+  [ -z "$(echo "$cm" | grep 'storage "file"')" ]
 
   helm template . $(api_versions) -f $(examples_dir)/standalone.yaml \
       --show-only templates/server-tls-certificate.yaml | yq -e '.kind == "Certificate"'
+}
+
+@test "examples/standalone: raft node id is the pod name" {
+  cd `chart_dir`
+  local actual=$(helm template . $(api_versions) -f $(examples_dir)/standalone.yaml \
+      --show-only templates/server-statefulset.yaml |
+      yq -r '.spec.template.spec.containers[0].env[] | select(.name=="BAO_RAFT_NODE_ID") | .valueFrom.fieldRef.fieldPath')
+  [ "${actual}" = "metadata.name" ]
+}
+
+@test "examples/standalone + snapshot overlay: CronJob targets the main service" {
+  cd `chart_dir`
+  local addr=$(helm template openbao . -n openbao $(api_versions) \
+      -f $(examples_dir)/standalone.yaml -f $(examples_dir)/overlays/snapshot-s3.yaml \
+      --show-only templates/snapshotagent-configmap.yaml | yq -r '.data.BAO_ADDR')
+  [ "${addr}" = "https://openbao.openbao.svc:8200" ]
 }
 
 @test "examples/standalone: drops all capabilities" {

@@ -572,13 +572,14 @@ Things to keep in mind:
 | `dataStorage.size`, `storageClass`, `accessMode`, PVC labels | **Fails** (immutable `volumeClaimTemplates`) | See [05-storage.md §5](05-storage.md#5-resizing-volumes) |
 | `podManagementPolicy`, `serviceName` | **Fails** (immutable) | Delete the StatefulSet with `--cascade=orphan`, then upgrade |
 | `nameOverride`, release name | **Fails** or new objects | Do not change on a running release |
-| standalone ↔ HA, Raft ↔ external | Data does not move by itself | See [09-deployment-modes.md §8](09-deployment-modes.md#8-migrating-between-modes) |
+| standalone → HA Raft | Applied; `openbao-0` keeps its Raft data, new pods join it | Requires `ha.raft.setNodeId: true`. See [09-deployment-modes.md §8.2](09-deployment-modes.md#82-standalone-to-ha-with-raft) |
+| Raft ↔ external, old `file` standalone → Raft | Data does not move by itself | See [09-deployment-modes.md §8](09-deployment-modes.md#8-migrating-between-modes) |
 
 ### 8.2 Upgrading OpenBao
 
 1. Read the OpenBao release notes and upgrade guide for every version
    between the current and the target one.
-2. Take a snapshot (Raft) or a volume copy (file).
+2. Take a Raft snapshot (`bao operator raft snapshot save`, standalone and HA).
 3. Update `server.image.tag` and run `helm upgrade`.
 4. Restart the pods:
    - standalone: delete the pod, unseal;

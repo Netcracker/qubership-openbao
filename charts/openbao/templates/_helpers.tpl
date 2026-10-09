@@ -253,6 +253,14 @@ extra volumes the user may have specified (such as a secret with TLS).
 Set's the args for custom command to render the OpenBao configuration
 file with IP addresses to make the out of box experience easier
 for users looking to use this chart with Consul Helm.
+
+In standalone mode (single-node integrated Raft storage) a guard refuses to
+start the server when the data volume still holds data written by the legacy
+`file` storage backend (a `core/` directory without `vault.db`). Starting Raft
+on top of such a volume would present an EMPTY, uninitialized OpenBao while the
+old secrets sit untouched next to it. Migrate the data first with
+`bao operator migrate` (see docs/chart/09-deployment-modes.md), or set
+server.standalone.legacyFileDataCheck=false to bypass the guard.
 */}}
 {{- define "openbao.args" -}}
   {{ if or (eq .mode "standalone") (eq .mode "ha") (eq .mode "dev") }}
@@ -264,6 +272,15 @@ for users looking to use this chart with Consul Helm.
             [ -n "${API_ADDR}" ] && sed -Ei "s|API_ADDR|${API_ADDR?}|g" /tmp/storageconfig.hcl;
             [ -n "${TRANSIT_ADDR}" ] && sed -Ei "s|TRANSIT_ADDR|${TRANSIT_ADDR?}|g" /tmp/storageconfig.hcl;
             [ -n "${RAFT_ADDR}" ] && sed -Ei "s|RAFT_ADDR|${RAFT_ADDR?}|g" /tmp/storageconfig.hcl;
+            {{- if and (eq .mode "standalone") (ne (.Values.server.standalone.legacyFileDataCheck | toString) "false") }}
+            DATA_DIR="{{ .Values.server.dataStorage.mountPath }}";
+            if grep -Eq 'storage[[:space:]]*"raft"|"raft"[[:space:]]*:' /tmp/storageconfig.hcl && [ -d "${DATA_DIR}/core" ] && [ ! -f "${DATA_DIR}/vault.db" ]; then
+              echo "ERROR: ${DATA_DIR} contains data of the legacy 'file' storage backend, but standalone mode now uses integrated Raft storage." >&2;
+              echo "ERROR: Starting would expose an empty, uninitialized OpenBao. Migrate the data with 'bao operator migrate' (docs/chart/09-deployment-modes.md, 'Migrating a file-backed standalone to Raft')," >&2;
+              echo "ERROR: or set server.standalone.legacyFileDataCheck=false to start anyway." >&2;
+              exit 1;
+            fi;
+            {{- end }}
             /usr/local/bin/docker-entrypoint.sh bao server -config=/tmp/storageconfig.hcl {{ .Values.server.extraArgs }}
   {{ end }}
 {{- end -}}
@@ -314,8 +331,9 @@ based on the mode configured.
 Set's up the volumeClaimTemplates when data or audit storage is required.
 
 Data storage is mandatory whenever the selected backend keeps its data on a
-local path: standalone (file backend), HA with integrated Raft, and the
-persistent dev mode. For those modes the data PVC is always created — there is
+local path: standalone (single-node integrated Raft), HA with integrated Raft,
+and the persistent dev mode (which runs on the standalone code path). For those
+modes the data PVC is always created — there is
 no opt-out — because dropping it silently sends the store to the container
 layer and loses all data on every restart. Audit storage remains opt-in via
 server.auditStorage.enabled.

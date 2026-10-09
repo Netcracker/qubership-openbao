@@ -53,7 +53,7 @@ the pod.
 
 | Requirement | Why |
 |-------------|-----|
-| **Integrated Raft storage** (`server.ha.raft.enabled: true`, or an external Raft cluster) | `sys/storage/raft/snapshot` exists only for Raft. Standalone (`file`) and PostgreSQL backends are not supported |
+| **Integrated Raft storage**: standalone (single-node Raft, the default), HA with `server.ha.raft.enabled: true`, or an external Raft cluster | `sys/storage/raft/snapshot` exists only for Raft. PostgreSQL and custom `file` configs are not supported |
 | Kubernetes auth method enabled and configured in OpenBao | The agent logs in with its ServiceAccount token |
 | An OpenBao policy and role for the agent | [§5.2](#52-create-the-policy-and-role) |
 | S3-compatible bucket and credentials | Upload target |
@@ -62,6 +62,14 @@ the pod.
 
 The CronJob is rendered whenever `snapshotAgent.enabled: true`, in any mode.
 The chart does not check that the backend is Raft.
+
+In standalone mode the agent talks to the client Service
+(`<fullname>.<namespace>.svc`), which always selects the single leader pod:
+
+```bash
+helm upgrade --install openbao ./charts/openbao -n openbao \
+  -f examples/standalone.yaml -f examples/overlays/snapshot-s3.yaml
+```
 
 ---
 

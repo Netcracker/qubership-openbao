@@ -46,7 +46,7 @@ flowchart TD
 | *render error* | `server.dev_mode.enabled: true` **and** `server.ha.enabled: true` | Helm fails: `server.dev_mode.enabled and server.ha.enabled are mutually exclusive ...` |
 | `external` | `global.externalBaoAddr` (or the deprecated `global.externalVaultAddr`) is non-empty, **or** the server is disabled | None |
 | `ha` | `server.ha.enabled: true` | StatefulSet with `server.ha.replicas` pods (default `3`) |
-| `standalone` | `server.standalone.enabled` is `true` or `"-"` (the default) | StatefulSet with 1 pod |
+| `standalone` | `server.standalone.enabled` is `true` or `"-"` (the default) | StatefulSet with 1 pod running a one-node integrated Raft cluster |
 | `""` (empty) | `server.standalone.enabled: false` and HA is off | None. No StatefulSet, but the Services and an **empty** config ConfigMap are still rendered |
 
 ### How "dev mode" fits in
@@ -253,7 +253,7 @@ server:
           address: "[::]:8200"
           tls_disable: 1
       storage:
-        file:
+        raft:
           path: /openbao/data
 ```
 
@@ -276,7 +276,9 @@ config change then changes the pod template. With the default
 ### Stage 4: runtime placeholder substitution
 
 The container command (`openbao.args`, [`_helpers.tpl:257`](/charts/openbao/templates/_helpers.tpl))
-copies the file to `/tmp/storageconfig.hcl`. It replaces these literal
+copies the file to `/tmp/storageconfig.hcl`. In standalone mode it then runs
+the legacy `file`-data guard (`server.standalone.legacyFileDataCheck`, see
+[05-storage.md](05-storage.md#legacy-file-data-on-the-volume)). It replaces these literal
 placeholders with environment variable values, and only if the variable is
 non-empty:
 
@@ -306,7 +308,7 @@ server:
         address = "[::]:8200"
         tls_disable = 1
       }
-      storage "file" { path = "/openbao/data" }
+      storage "raft" { path = "/openbao/data" }
       seal "transit" {
         address    = "TRANSIT_ADDR"
         key_name   = "autounseal"
@@ -625,7 +627,8 @@ flowchart TB
     sm -.scrape /v1/sys/metrics.-> active
 ```
 
-In standalone mode there is a single pod, no active or standby Services, and
+In standalone mode there is a single pod (a one-node Raft cluster, always
+the leader once unsealed), no active or standby Services, and
 Ingress, Gateway and the snapshot agent target the client Service instead of
 `-active`.
 

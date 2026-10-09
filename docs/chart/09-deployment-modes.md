@@ -14,6 +14,8 @@ describe how to move from one to another.
 - [6. External mode](#6-external-mode)
 - [7. Mode comparison](#7-mode-comparison)
 - [8. Migrating between modes](#8-migrating-between-modes)
+  - [8.2 Standalone to HA with Raft](#82-standalone-to-ha-with-raft)
+  - [8.5 Migrating a file-backed standalone to Raft](#85-migrating-a-file-backed-standalone-to-raft)
 
 > Examples in this document have not yet been checked with `helm template`
 > or on a live cluster. Statements marked "(verify)" depend on OpenBao
@@ -38,8 +40,8 @@ The mode is derived from several switches. If you have not read it yet, see
 
 | Mode | Switches | Replicas | Storage | Unseal | Production |
 |------|----------|----------|---------|--------|------------|
-| [Dev](#2-dev-mode) | `dev_mode.enabled: true` (**default**) | 1 | `file` on a PVC | Automatic (key on the PVC) | No |
-| [Standalone](#3-standalone-mode) | `dev_mode.enabled: false`, `standalone.enabled: true` or `"-"` | 1 | `file` on a PVC | Manual or auto-unseal | Limited |
+| [Dev](#2-dev-mode) | `dev_mode.enabled: true` (**default**) | 1 | Single-node integrated Raft on a PVC | Automatic (key on the PVC) | No |
+| [Standalone](#3-standalone-mode) | `dev_mode.enabled: false`, `standalone.enabled: true` or `"-"` | 1 | Single-node integrated Raft on a PVC | Manual or auto-unseal | Limited |
 | [HA + Raft](#4-ha-with-integrated-raft) | `dev_mode.enabled: false`, `ha.enabled: true`, `ha.raft.enabled: true` | 3 (or 5) | Integrated Raft, one PVC per pod | Manual or auto-unseal | **Yes** (recommended) |
 | [HA + external storage](#5-ha-with-external-storage) | `dev_mode.enabled: false`, `ha.enabled: true`, `ha.raft.enabled: false` | 2 or more | External database (PostgreSQL) | Manual or auto-unseal | Yes |
 | [External](#6-external-mode) | `global.externalBaoAddr` set | 0 | Outside the cluster | n/a | n/a |
@@ -129,7 +131,10 @@ listener "tcp" {
   cluster_address = "[::]:8201"
   tls_disable = 1
 }
-storage "file" {
+
+# Single-node integrated Raft storage. node_id comes from BAO_RAFT_NODE_ID
+# (the pod name), cluster_addr from BAO_CLUSTER_ADDR.
+storage "raft" {
   path = "/openbao/data"
 }
 ```
@@ -179,8 +184,9 @@ restarts the container.
 - Single replica only. `dev_mode.enabled: true` together with
   `ha.enabled: true` fails the render.
 - `server.postStart` is ignored.
-- Uses the `file` storage backend. OpenBao documents it as not recommended
-  for production, because it is not transactional and has no file locking.
+- Uses the same single-node Raft storage as standalone. A dev volume created
+  by an older chart version (with the `file` backend) is refused at start by
+  the legacy-data guard; see [§8.5](#85-migrating-a-file-backed-standalone-to-raft).
 - With `dev_mode.enabled: true` and `standalone.enabled: false`, no server
   pod is deployed at all.
 
@@ -194,8 +200,38 @@ A single OpenBao server that **you** initialize and unseal, or that unseals
 itself through an external key management service. It is the simplest
 non-dev topology.
 
+Standalone runs on **integrated storage (Raft consensus)** as a one-node
+cluster. The node is a voter, holds a quorum of 1 out of 1, and becomes the
+leader as soon as it is unsealed. Compared with the `file` backend used by
+older chart versions, this gives you:
+
+| Capability | Old standalone (`file`) | Standalone (single-node Raft) |
+|------------|-------------------------|-------------------------------|
+| Storage engine | `file`, not transactional, no locking | Integrated Raft (BoltDB, transactional), the engine OpenBao recommends |
+| Online backups | No (stop the pod, copy the volume) | `bao operator raft snapshot save/restore`, snapshot agent |
+| Growing to HA | Offline `bao operator migrate` (file → raft) | In-place: change values, new pods join through `retry_join` ([§8.2](#82-standalone-to-ha-with-raft)) |
+| Cluster health | — | `bao operator raft list-peers`, `bao operator raft autopilot state` |
+| Availability | Single pod | Single pod (unchanged: **not** HA) |
+
 Choose it for small internal installations where an outage during a pod
-restart or node failure is acceptable, ideally with auto-unseal.
+restart or node failure is acceptable, ideally with auto-unseal, and that may
+need to grow into HA later.
+
+How the chart wires the single node:
+
+| Setting | Value in standalone | Source |
+|---------|---------------------|--------|
+| `storage "raft" { path }` | `server.dataStorage.mountPath` (default `/openbao/data`) | `server.standalone.config` |
+| Raft node ID | pod name (`openbao-0`) | `BAO_RAFT_NODE_ID`, always set in standalone |
+| Cluster address | `https://openbao-0.openbao-internal:8201` | `BAO_CLUSTER_ADDR` (`server.ha.clusterAddr` overrides) |
+| API address | `<scheme>://$(POD_IP):8200` | `BAO_API_ADDR` (`server.ha.apiAddr` overrides) |
+| `retry_join` | none, a single node never joins anyone | — |
+| `service_registration` | none (no discovery RBAC in standalone) | — |
+| Replicas | always `1` | `openbao.replicas` helper |
+
+The node ID is pinned to the pod name so that it stays stable across
+restarts and is identical to the ID the pod gets after a move to HA with
+`ha.raft.setNodeId: true`.
 
 ### 3.2 Values
 
@@ -213,7 +249,8 @@ server:
     size: 10Gi
 ```
 
-Production-oriented, with TLS, an audit volume and Transit auto-unseal:
+Production-oriented, with TLS, an audit volume, Transit auto-unseal, Raft
+tuning and telemetry:
 
 ```yaml
 global:
@@ -237,16 +274,29 @@ server:
         tls_key_file  = "{{ .Values.server.tls.mountPath }}/{{ .Values.server.tls.keyKey }}"
         tls_min_version = "{{ .Values.server.tls.tlsMinVersion }}"
         {{- end }}
+        telemetry {
+          unauthenticated_metrics_access = "true"
+        }
       }
 
-      storage "file" {
+      # Single-node integrated storage. Keep `path` equal to
+      # server.dataStorage.mountPath. No retry_join: there is nobody to join.
+      storage "raft" {
         path = "{{ .Values.server.dataStorage.mountPath }}"
+        # 1 = production timing. The default (0, i.e. 5) is tuned for
+        # minimal hardware.
+        performance_multiplier = 1
       }
 
       seal "transit" {
         address    = "TRANSIT_ADDR"
         key_name   = "openbao-autounseal"
         mount_path = "transit/"
+      }
+
+      telemetry {
+        prometheus_retention_time = "30s"
+        disable_hostname = true
       }
 
   extraEnvironmentVars:
@@ -263,7 +313,7 @@ server:
 
   dataStorage:
     size: 10Gi
-    storageClass: premium-ssd
+    storageClass: premium-ssd     # Raft fsyncs every write: use SSDs
   auditStorage:
     enabled: true
     size: 10Gi
@@ -275,7 +325,57 @@ server:
   persistentVolumeClaimRetentionPolicy:
     whenDeleted: Retain
     whenScaled: Retain
+
+  # With auto-unseal a restart needs no operator, so let the
+  # StatefulSet controller replace the pod on upgrades.
+  updateStrategyType: RollingUpdate
+
+serverTelemetry:
+  serviceMonitor:
+    enabled: true
+
+# Raft storage makes scheduled snapshots possible in standalone.
+snapshotAgent:
+  enabled: true
+  schedule: "0 */6 * * *"
+  s3CredentialsSecret: openbao-snapshot-s3
 ```
+
+Rules for a custom `server.standalone.config`:
+
+- Keep a `storage "raft"` block whose `path` equals
+  `server.dataStorage.mountPath`. Using the template expression above keeps
+  them in sync.
+- Do not add `retry_join` blocks. A standalone node that joins another
+  cluster is no longer standalone, and the chart does not render the HA
+  Services and PDB for it.
+- Do not add `service_registration "kubernetes"`. Standalone renders no
+  discovery Role, so the server logs permission errors
+  ([08-security-and-rbac.md](08-security-and-rbac.md)).
+- Do not set `node_id` in the config. `BAO_RAFT_NODE_ID` already sets it to
+  the pod name; a different value breaks the in-place move to HA.
+- A YAML map is also accepted (rendered as JSON):
+
+  ```yaml
+  server:
+    standalone:
+      config:
+        ui: true
+        listener:
+          tcp:
+            address: "[::]:8200"
+            cluster_address: "[::]:8201"
+            tls_disable: 1
+        storage:
+          raft:
+            path: /openbao/data
+  ```
+
+| Value | Default | Description |
+|-------|---------|-------------|
+| `server.standalone.enabled` | `"-"` | `true` or `"-"` selects standalone when HA is off |
+| `server.standalone.config` | single-node Raft HCL | Server configuration (string HCL with `tpl`, or a map) |
+| `server.standalone.legacyFileDataCheck` | `true` | Refuse to start when the data volume still holds `file` backend data ([§8.5](#85-migrating-a-file-backed-standalone-to-raft)) |
 
 The shipped profile `resource-profiles/small.yaml` sets the same mode and
 resources (`-f charts/openbao/resource-profiles/small.yaml`). The profile
@@ -291,6 +391,7 @@ resources (`-f charts/openbao/resource-profiles/small.yaml`). The profile
 | Services | `openbao`, `openbao-internal` |
 | ServiceAccount, ClusterRoleBinding | `openbao`, `openbao-server-binding` |
 | TLS objects | when TLS is on ([07-tls.md](07-tls.md)) |
+| Snapshot agent CronJob | when `snapshotAgent.enabled`; `BAO_ADDR` is `openbao.<ns>.svc` |
 
 No PodDisruptionBudget, no active or standby Services, and no discovery Role.
 
@@ -309,13 +410,48 @@ listener "tcp" {
   tls_key_file  = "/openbao/tls/tls.key"
   tls_min_version = "tls12"
 }
-storage "file" {
+
+# Single-node integrated Raft storage. node_id comes from BAO_RAFT_NODE_ID
+# (the pod name), cluster_addr from BAO_CLUSTER_ADDR.
+storage "raft" {
   path = "/openbao/data"
 }
 ```
 
 The default config contains commented-out examples for a `gcpckms` seal and
 a `telemetry` block.
+
+Environment added by the StatefulSet:
+
+| Variable | Value |
+|----------|-------|
+| `BAO_RAFT_NODE_ID` | pod name (`metadata.name`) |
+| `BAO_CLUSTER_ADDR` | `https://$(HOSTNAME).openbao-internal:8201` |
+| `BAO_API_ADDR` | `<scheme>://$(POD_IP):8200` |
+
+Before `bao server` starts, the container command checks the data volume.
+If `<mountPath>/core/` exists but `<mountPath>/vault.db` does not, the volume
+was written by the old `file` backend and the container exits with:
+
+```text
+ERROR: /openbao/data contains data of the legacy 'file' storage backend, but standalone mode now uses integrated Raft storage.
+ERROR: Starting would expose an empty, uninitialized OpenBao. Migrate the data with 'bao operator migrate' ...
+```
+
+Without this guard the pod would start an empty, uninitialized Raft node
+next to the old data, and the next `bao operator init` would create a new,
+empty OpenBao. Migrate as described in
+[§8.5](#85-migrating-a-file-backed-standalone-to-raft).
+
+Data layout on `data-openbao-0` after the first start:
+
+```text
+/openbao/data/
+├── vault.db            # Raft FSM (BoltDB): the encrypted key/value data
+└── raft/
+    ├── raft.db         # Raft log and stable store
+    └── snapshots/      # internal Raft snapshots (log compaction)
+```
 
 ### 3.5 First start
 
@@ -324,7 +460,7 @@ probe it stays `Running` but not Ready (`0/1`) until it is unsealed.
 
 ```bash
 kubectl -n openbao wait --for=jsonpath='{.status.phase}'=Running pod/openbao-0 --timeout=180s
-kubectl -n openbao exec openbao-0 -- bao status        # Initialized: false, Sealed: true
+kubectl -n openbao exec openbao-0 -- bao status        # Initialized: false, Sealed: true, Storage Type: raft
 ```
 
 Initialize with 5 key shares and a threshold of 3:
@@ -347,6 +483,12 @@ kubectl -n openbao exec openbao-0 -- bao operator unseal <share-3>
 kubectl -n openbao wait --for=condition=Ready pod/openbao-0 --timeout=60s
 ```
 
+The same in one step with the shipped script (keys go to the pod on stdin):
+
+```bash
+examples/scripts/init-unseal.sh -n openbao -r openbao
+```
+
 With auto-unseal (KMS or Transit), `bao operator init` returns **recovery
 keys** instead, and the server unseals itself on every start:
 
@@ -355,21 +497,69 @@ kubectl -n openbao exec openbao-0 -- \
   bao operator init -recovery-shares=5 -recovery-threshold=3
 ```
 
-Then log in and turn on auditing:
+Then log in, check the one-node Raft cluster and turn on auditing:
 
 ```bash
 kubectl -n openbao exec -it openbao-0 -- bao login
+kubectl -n openbao exec openbao-0 -- bao operator raft list-peers
 kubectl -n openbao exec openbao-0 -- bao audit enable file file_path=/openbao/audit/audit.log
 ```
+
+```text
+Node         Address                            State     Voter
+----         -------                            -----     -----
+openbao-0    openbao-0.openbao-internal:8201    leader    true
+```
+
+`bao status` now shows `HA Enabled: true`, `HA Mode: active` and
+`Raft Committed Index`. HA here only means the Raft machinery is on; with a
+single node there is no standby to fail over to.
 
 ### 3.6 Operations
 
 | Task | How |
 |------|-----|
-| Restart or upgrade | `helm upgrade`, delete the pod, unseal again (unless auto-unseal) |
-| Back up | The `file` backend has no snapshot API. Stop the pod, then copy the PVC with a volume snapshot or backup tool. A copy of a running server can be inconsistent |
+| Restart or upgrade | `helm upgrade`, delete the pod, unseal again (unless auto-unseal). With auto-unseal, `updateStrategyType: RollingUpdate` is safe |
+| Health | `bao operator raft list-peers`, `bao operator raft autopilot state` (needs a token) |
+| Back up (manual) | `bao operator raft snapshot save` on the running server, see below |
+| Back up (scheduled) | Snapshot agent to S3: `-f examples/overlays/snapshot-s3.yaml` ([11-backup-snapshot-agent.md](11-backup-snapshot-agent.md)) |
+| Restore | `bao operator raft snapshot restore`, see below |
 | Resize the volume | [05-storage.md §5](05-storage.md#5-resizing-volumes) |
-| Move to HA | [§8.2](#82-standalone-to-ha-with-raft) |
+| Move to HA | In place, [§8.2](#82-standalone-to-ha-with-raft) |
+
+Online backup, without stopping the server:
+
+```bash
+kubectl -n openbao exec openbao-0 -- bao operator raft snapshot save /tmp/bao.snap
+kubectl -n openbao cp openbao-0:/tmp/bao.snap ./bao-$(date +%F).snap
+kubectl -n openbao exec openbao-0 -- rm /tmp/bao.snap
+```
+
+Restore into the same server (same unseal keys):
+
+```bash
+kubectl -n openbao cp ./bao-2026-10-01.snap openbao-0:/tmp/restore.snap
+kubectl -n openbao exec openbao-0 -- bao operator raft snapshot restore /tmp/restore.snap
+```
+
+Restore into a freshly installed server that was initialized with other
+keys (disaster recovery, new namespace or cluster):
+
+```bash
+kubectl -n openbao exec openbao-0 -- bao operator raft snapshot restore -force /tmp/restore.snap
+# From now on the server uses the unseal keys (or KMS key) of the SNAPSHOT.
+# If it is sealed after the restore or after the next restart, unseal it
+# with the old shares:
+kubectl -n openbao exec openbao-0 -- bao operator unseal <old-share-1>   # ... threshold times
+```
+
+Snapshot policy for a non-root operator token:
+
+```hcl
+path "sys/storage/raft/snapshot"       { capabilities = ["read", "update"] }
+path "sys/storage/raft/snapshot-force" { capabilities = ["update"] }
+path "sys/storage/raft/configuration"  { capabilities = ["read"] }
+```
 
 Without auto-unseal, every restart (node drain, eviction, OOM kill, upgrade)
 leaves OpenBao sealed until a key holder acts. Plan for that, or use
@@ -377,12 +567,17 @@ auto-unseal.
 
 ### 3.7 Limitations
 
-- One replica. Do not scale the StatefulSet. A second pod would get its own
-  empty PVC and its own separate, uninitialized server.
-- The `file` backend is not recommended by OpenBao for production (not
-  transactional, no file locking) and has no snapshot API. The snapshot
-  agent does not work with it.
-- Downtime on every restart.
+- One replica. Do not scale the StatefulSet with `kubectl scale`. A second
+  pod would get its own empty PVC and its own separate, uninitialized
+  one-node cluster (there is no `retry_join`). To add nodes, switch to HA as
+  in [§8.2](#82-standalone-to-ha-with-raft).
+- Downtime on every restart; a lost node means downtime until the pod is
+  rescheduled and its volume is attached again.
+- Raft writes with `fsync`. Slow network storage increases request latency.
+- Snapshots are encrypted with the barrier key. Keep the unseal or recovery
+  keys (or the KMS key) with the backups.
+- Volumes from chart versions with the `file` backend need a one-time
+  migration ([§8.5](#85-migrating-a-file-backed-standalone-to-raft)).
 
 ---
 
@@ -1033,11 +1228,12 @@ for the Kubernetes auth configuration on the external server.
 | | Dev | Standalone | HA + Raft | HA + PostgreSQL | External |
 |---|---|---|---|---|---|
 | Pods | 1 | 1 | 3 or 5 | 2 or more | 0 |
-| Storage | `file`, PVC | `file`, PVC | Raft, PVC per pod | PostgreSQL | external |
+| Storage | single-node Raft, PVC | single-node Raft, PVC | Raft, PVC per pod | PostgreSQL | external |
 | Survives a pod restart | yes, auto-unseal | data yes; sealed until unsealed | yes; other nodes keep serving | yes; other nodes keep serving | n/a |
 | Survives a node failure | after rescheduling (if the volume can move) | after rescheduling, sealed | yes, with 1 (3 nodes) or 2 (5 nodes) failures | yes, as long as the database is up | n/a |
 | Unseal | automatic, key on the PVC | manual or auto-unseal | manual on every pod, or auto-unseal | manual on every pod, or auto-unseal | n/a |
-| Backups | volume copy | volume copy (stopped) | Raft snapshots, snapshot agent | database backups | external |
+| Backups | Raft snapshots | Raft snapshots, snapshot agent | Raft snapshots, snapshot agent | database backups | external |
+| Grow to HA | via standalone | in place ([§8.2](#82-standalone-to-ha-with-raft)) | scale `replicas` | scale `replicas` | n/a |
 | Active/standby Services | no | no | yes | yes | no |
 | PDB | no | no | yes | yes | no |
 | Minimum nodes (default affinity) | 1 | 1 | 3 | 2 | 0 |
@@ -1051,18 +1247,21 @@ for the Kubernetes auth configuration on the external server.
 
 | From → To | Method | Downtime |
 |-----------|--------|----------|
-| Dev → Standalone | Change values; data stays on the same PVC | One restart |
-| Standalone → HA + Raft | `bao operator migrate` (file → raft), offline | Yes, for the migration |
+| Dev → Standalone | Change values; same Raft data on the same PVC | One restart |
+| Standalone → HA + Raft | In place: switch values, new pods join the existing one-node cluster | One restart of `openbao-0` |
+| Standalone (old `file` backend) → Standalone (Raft) | `bao operator migrate` (file → raft), offline, once | Yes, for the migration |
+| HA + Raft → Standalone | Remove peers down to one voter, switch values | One restart |
 | HA + Raft → HA + Raft (new cluster) | Raft snapshot and `restore -force` | Yes, for the cut-over |
 | HA + Raft → HA + PostgreSQL | `bao operator migrate` (raft → postgresql), offline | Yes |
 | Any → External | Move the data to the external server first, then change values | Yes |
 
-Always take a copy of the data and keep the unseal keys before a migration.
+Always take a snapshot (or a copy of the data) and keep the unseal keys
+before a migration.
 
 ### 8.1 Dev to standalone
 
-The backend stays `file` and the PVC stays `data-<fullname>-0`, so the data
-is reused.
+Both modes use single-node Raft and the PVC stays `data-<fullname>-0`, so
+the data is reused.
 
 1. Save the bootstrap keys and remove them from the volume. See
    [05-storage.md §7](05-storage.md#7-dev-mode-files-on-the-data-volume).
@@ -1084,128 +1283,119 @@ is reused.
 
 ### 8.2 Standalone to HA with Raft
 
-`bao operator migrate` copies the encrypted data from one backend to another
-without decrypting it. It must run while the server is **stopped**. The keys
-and the root token stay the same.
+Because standalone already is a one-node Raft cluster with node ID
+`openbao-0` and cluster address `https://openbao-0.openbao-internal:8201`,
+moving to HA needs **no data migration**. `openbao-0` keeps its data and
+stays the leader; the new pods start empty and join it through `retry_join`.
 
-The plan below keeps the release name, so the HA StatefulSet reuses
-`data-openbao-0`. The Raft data is written to a sub-directory of the same
-volume, because the `file` data already occupies `/openbao/data`.
-
-**1. Copy the data out** (backup):
-
-```bash
-kubectl -n openbao exec openbao-0 -- tar czf /tmp/file-backup.tgz -C /openbao/data .
-kubectl -n openbao cp openbao-0:/tmp/file-backup.tgz ./file-backup.tgz
+```mermaid
+sequenceDiagram
+    participant Op as Operator
+    participant P0 as openbao-0 (data)
+    participant P1 as openbao-1 (new)
+    participant P2 as openbao-2 (new)
+    Op->>P0: raft snapshot save (backup)
+    Op->>P0: helm upgrade (ha.enabled, raft.enabled, setNodeId)
+    Op->>P0: delete pod, unseal
+    Note over P0: leader of a 1-node cluster
+    P1->>P0: retry_join
+    Op->>P1: unseal
+    P2->>P0: retry_join
+    Op->>P2: unseal
+    Note over P0,P2: 3 voters, quorum 2
 ```
 
-**2. Stop the server:**
+**1. Back up** with a snapshot (the server keeps running):
 
 ```bash
-kubectl -n openbao scale statefulset openbao --replicas=0
-kubectl -n openbao wait --for=delete pod/openbao-0 --timeout=120s
+kubectl -n openbao exec openbao-0 -- bao operator raft snapshot save /tmp/pre-ha.snap
+kubectl -n openbao cp openbao-0:/tmp/pre-ha.snap ./pre-ha.snap
 ```
 
-**3. Run the migration** in a temporary pod that mounts the data volume:
+**2. Check the prerequisites** for HA: at least 3 schedulable nodes (default
+required anti-affinity), and, with TLS, a certificate whose SANs cover the
+`-internal` names (always included by the chart) and that the joining pods
+can verify (`leader_ca_cert_file`).
+
+**3. Upgrade to HA with Raft.** `raft.setNodeId: true` is required: it keeps
+the node ID `openbao-0` that standalone used. Without it `openbao-0` would
+start with a new random ID that is not in its stored Raft configuration and
+would not become leader. `standalone.enabled` can stay
+as it is; `ha.enabled: true` takes precedence.
 
 ```yaml
-# migrate-pod.yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: openbao-migrate
-  namespace: openbao
-spec:
-  restartPolicy: Never
-  securityContext:
-    runAsNonRoot: true
-    runAsUser: 100
-    runAsGroup: 1000
-    fsGroup: 1000
-  containers:
-    - name: migrate
-      image: quay.io/openbao/openbao:2.6.2
-      command: ["/bin/sh", "-ec"]
-      args:
-        - |
-          cat > /tmp/migrate.hcl <<'EOF'
-          storage_source "file" {
-            path = "/openbao/data"
-          }
-          storage_destination "raft" {
-            path    = "/openbao/data/raft"
-            node_id = "openbao-0"
-          }
-          cluster_addr = "https://openbao-0.openbao-internal:8201"
-          EOF
-          mkdir -p /openbao/data/raft
-          bao operator migrate -config /tmp/migrate.hcl
-      volumeMounts:
-        - name: data
-          mountPath: /openbao/data
-  volumes:
-    - name: data
-      persistentVolumeClaim:
-        claimName: data-openbao-0
-```
-
-```bash
-kubectl apply -f migrate-pod.yaml
-kubectl -n openbao logs -f openbao-migrate
-kubectl -n openbao delete pod openbao-migrate
-```
-
-`node_id` must match the ID the pod uses later. With `setNodeId: true` that
-is the pod name, `openbao-0`.
-
-**4. Upgrade to HA with Raft** and point Raft at the new sub-directory:
-
-```yaml
+# ha-values.yaml (merge with your standalone values, or use examples/ha-raft.yaml)
 server:
   dev_mode:
-    enabled: false
-  standalone:
     enabled: false
   ha:
     enabled: true
     replicas: 3
     raft:
       enabled: true
-      setNodeId: true
-      config: |
-        ui = true
-        listener "tcp" {
-          address = "[::]:8200"
-          cluster_address = "[::]:8201"
-          tls_disable = 1
-        }
-        storage "raft" {
-          path = "/openbao/data/raft"
-          retry_join { leader_api_addr = "http://openbao-0.openbao-internal:8200" }
-          retry_join { leader_api_addr = "http://openbao-1.openbao-internal:8200" }
-          retry_join { leader_api_addr = "http://openbao-2.openbao-internal:8200" }
-        }
-        service_registration "kubernetes" {}
+      setNodeId: true       # required: keeps node ID openbao-0
 ```
 
 ```bash
-helm upgrade openbao ./charts/openbao -n openbao -f ha-values.yaml
+helm upgrade openbao ./charts/openbao -n openbao -f values.yaml -f ha-values.yaml
+# or simply: -f examples/ha-raft.yaml
 ```
 
 The StatefulSet selector, `serviceName` and `volumeClaimTemplates` are the
 same in both modes, so the upgrade is accepted. The PDB, the active and
-standby Services and the discovery RBAC are added.
+standby Services and the discovery RBAC are added, and `replicas` becomes 3.
 
-**5. Unseal `openbao-0`** with the existing keys. It starts as a single-node
-Raft cluster that holds all the data.
+If you overrode `server.standalone.config` with settings you need
+(seal, telemetry, `performance_multiplier`), copy them into
+`server.ha.raft.config`. The Raft `path` must stay the same.
 
-**6. Let the other pods join** and unseal them, as in
-[§4.5](#45-first-start) steps 3 and 4. Their PVCs are new and empty. Note
-that the new pods have a Raft path of `/openbao/data/raft` too, because the
-config is shared.
+**4. Restart and unseal `openbao-0`** so it picks up the new config
+(`OnDelete` strategy):
 
-**7. Clean up** the old `file` data on `data-openbao-0` once the cluster has
-been verified (`core/`, `logical/`, `sys/` directories next to `raft/`).
+```bash
+kubectl -n openbao delete pod openbao-0
+kubectl -n openbao exec openbao-0 -- bao operator unseal <share-1>   # ... threshold times
+```
+
+**5. Unseal the new pods** after they have joined, as in
+[§4.5](#45-first-start) steps 3 and 4, or with the script, which skips the
+already initialized `openbao-0`:
+
+```bash
+examples/scripts/init-unseal.sh -n openbao -r openbao -p 3 -k ./openbao-init.json
+```
+
+**6. Verify:**
+
+```bash
+kubectl -n openbao exec openbao-0 -- bao operator raft list-peers
+kubectl -n openbao exec openbao-0 -- bao operator raft autopilot state
+kubectl -n openbao get pods -l component=server -L openbao-active
+```
+
+Rollback before step 5: scale back with `helm upgrade` to the standalone
+values. Once other peers have joined, first remove them
+(`bao operator raft remove-peer openbao-2`, `... openbao-1`) so the single
+remaining node keeps its quorum, then switch the values (§8.2.1).
+
+#### 8.2.1 HA with Raft back to standalone
+
+1. Make `openbao-0` the leader (`bao operator step-down` on the current
+   leader until `openbao-0` is active).
+2. Remove the other peers **before** deleting their pods:
+
+   ```bash
+   kubectl -n openbao exec openbao-0 -- bao operator raft remove-peer openbao-2
+   kubectl -n openbao exec openbao-0 -- bao operator raft remove-peer openbao-1
+   kubectl -n openbao exec openbao-0 -- bao operator raft list-peers   # only openbao-0
+   ```
+
+3. Switch to the standalone values (`ha.enabled: false`) and
+   `helm upgrade`. The StatefulSet scales to 1.
+4. Delete `data-openbao-1` and `data-openbao-2`, otherwise the old data
+   rejoins under the old node IDs if you scale up again.
+5. Delete `openbao-0` so it loads the standalone config (no `retry_join`, no
+   `service_registration`), then unseal.
 
 ### 8.3 Raft cluster to a new Raft cluster
 
@@ -1228,8 +1418,9 @@ then remove the old cluster.
 
 ### 8.4 Raft to PostgreSQL
 
-Stop all pods, then run `bao operator migrate` in a temporary pod as in
-[§8.2](#82-standalone-to-ha-with-raft) with:
+Stop all pods, then run `bao operator migrate` in a temporary pod that mounts
+`data-openbao-0`, as in [§8.5](#85-migrating-a-file-backed-standalone-to-raft),
+with:
 
 ```hcl
 storage_source "raft" {
@@ -1247,3 +1438,125 @@ Migrate from the volume of the last leader. Then upgrade the release to the
 external storage removes the data PVCs from the StatefulSet template, and
 `volumeClaimTemplates` cannot change. Delete the StatefulSet with
 `--cascade=orphan` before `helm upgrade` (the pods are already stopped).
+
+### 8.5 Migrating a file-backed standalone to Raft
+
+Chart versions before the Raft-based standalone stored standalone and dev
+data with the `file` backend directly in `/openbao/data` (`core/`,
+`logical/`, `sys/`). After the upgrade the container refuses to start and
+logs the `legacy 'file' storage backend` error from [§3.4](#34-server-configuration).
+Migrate once, offline. `bao operator migrate` copies the encrypted entries
+without decrypting them, so the unseal keys and the root token stay the same.
+
+```mermaid
+flowchart LR
+  a[Old pod<br/>file backend] -->|1. tar backup| b[(backup.tgz)]
+  a -->|2. scale to 0| c[Migration pod]
+  c -->|3. file → raft<br/>into /openbao/data/raft-migrated| d[(data-openbao-0)]
+  d -->|4. move file data away,<br/>promote raft files| e[New pod<br/>single-node Raft]
+```
+
+**1. Back up** the volume while the old pod still runs the old chart
+version:
+
+```bash
+kubectl -n openbao exec openbao-0 -- tar czf /tmp/file-backup.tgz -C /openbao/data .
+kubectl -n openbao cp openbao-0:/tmp/file-backup.tgz ./file-backup.tgz
+```
+
+If you already upgraded and the pod is in `CrashLoopBackOff`, take the
+backup from the migration pod in step 3 instead (add a `tar` before
+`bao operator migrate`).
+
+**2. Stop the server:**
+
+```bash
+kubectl -n openbao scale statefulset openbao --replicas=0
+kubectl -n openbao wait --for=delete pod/openbao-0 --timeout=120s
+```
+
+**3. Run the migration** in a temporary pod that mounts the data volume.
+Raft is written to a temporary sub-directory first, then moved to the root
+of the volume, where the new default config expects it:
+
+```yaml
+# migrate-pod.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: openbao-migrate
+  namespace: openbao
+spec:
+  restartPolicy: Never
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 100
+    runAsGroup: 1000
+    fsGroup: 1000
+  containers:
+    - name: migrate
+      image: quay.io/openbao/openbao:2.6.2     # same version as the server
+      command: ["/bin/sh", "-ec"]
+      args:
+        - |
+          D=/openbao/data
+          test -d "$D/core"           || { echo "no file backend data in $D"; exit 1; }
+          test ! -e "$D/vault.db"     || { echo "$D already contains Raft data"; exit 1; }
+          mkdir -p "$D/raft-migrated"
+          cat > /tmp/migrate.hcl <<'EOF'
+          storage_source "file" {
+            path = "/openbao/data"
+          }
+          storage_destination "raft" {
+            path    = "/openbao/data/raft-migrated"
+            node_id = "openbao-0"
+          }
+          cluster_addr = "https://openbao-0.openbao-internal:8201"
+          EOF
+          bao operator migrate -config /tmp/migrate.hcl
+          # Keep the old file data on the volume until the new server is verified.
+          mkdir -p "$D/file-backend-legacy"
+          for x in core logical sys; do
+            [ -e "$D/$x" ] && mv "$D/$x" "$D/file-backend-legacy/"
+          done
+          # Promote the Raft files to the configured path.
+          mv "$D/raft-migrated/vault.db" "$D/vault.db"
+          mv "$D/raft-migrated/raft"     "$D/raft"
+          rmdir "$D/raft-migrated" 2>/dev/null || true
+          ls -la "$D"
+      volumeMounts:
+        - name: data
+          mountPath: /openbao/data
+  volumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: data-openbao-0
+```
+
+```bash
+kubectl apply -f migrate-pod.yaml
+kubectl -n openbao logs -f openbao-migrate
+kubectl -n openbao delete pod openbao-migrate
+```
+
+`node_id` must be `openbao-0`, the pod name, because standalone sets
+`BAO_RAFT_NODE_ID` to it. For another release name use `<fullname>-0` in
+`node_id` and `cluster_addr`. On OpenShift drop the `securityContext` IDs
+and let the SCC assign them.
+
+**4. Start the server** with the new chart version and unseal it with the
+existing keys:
+
+```bash
+helm upgrade openbao ./charts/openbao -n openbao -f values.yaml
+kubectl -n openbao scale statefulset openbao --replicas=1   # if helm did not restore it
+kubectl -n openbao exec openbao-0 -- bao operator unseal <share-1>   # ... threshold times
+kubectl -n openbao exec openbao-0 -- bao status          # Storage Type: raft
+```
+
+**5. Verify** that the old data is there (`bao secrets list`, read a known
+secret, `bao operator raft list-peers`), take a first snapshot, then remove
+`/openbao/data/file-backend-legacy`.
+
+If you intentionally want to discard the old data and start fresh, set
+`server.standalone.legacyFileDataCheck: false` (or delete the PVC) instead.

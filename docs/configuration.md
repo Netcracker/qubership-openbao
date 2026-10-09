@@ -46,9 +46,11 @@ the most commonly used parameters.
 | `server.dataStorage.storageClass` | Data PVC StorageClass (null = default) | `null` |
 | `server.auditStorage.enabled` | Create the audit-log PVC | `false` |
 | `server.auditStorage.size` | Audit PVC size | `10Gi` |
-| `server.dev_mode.enabled` | Run in persistent dev mode (file backend on the data PVC, auto-init/auto-unseal) — shipped default | `true` |
-| `server.dev_mode.config` | HCL config for the persistent dev server (file backend) | *(multi-line)* |
-| `server.standalone.enabled` | Run in standalone mode (file backend) | `"-"` |
+| `server.dev_mode.enabled` | Run in persistent dev mode (single-node Raft on the data PVC, auto-init/auto-unseal) — shipped default | `true` |
+| `server.dev_mode.config` | HCL config for the persistent dev server (not rendered, see known issue #1; dev uses `server.standalone.config`) | *(multi-line)* |
+| `server.standalone.enabled` | Run in standalone mode (single-node integrated Raft storage) | `"-"` |
+| `server.standalone.config` | Standalone HCL; default is a TLS-aware listener plus `storage "raft" { path = <dataStorage.mountPath> }` | *(multi-line)* |
+| `server.standalone.legacyFileDataCheck` | Refuse to start when the data volume still holds legacy `file` backend data | `true` |
 | `server.ha.enabled` | Run in HA mode | `false` |
 | `server.ha.replicas` | HA replica count | `3` |
 | `server.ha.raft.enabled` | Use integrated Raft storage in HA | `false` |

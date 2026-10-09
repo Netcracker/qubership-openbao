@@ -81,6 +81,10 @@ The render succeeded, but the Kubernetes API rejects an object.
 | `PostStartHookError` in dev mode | Bootstrap script failed (`set -e`), for example API not up within 60s, or TLS errors | `kubectl describe pod`; check `/tmp/openbao.log` before the restart; see [§4](#4-pod-runs-but-is-not-ready) |
 | Container restarts every ~70 seconds | Liveness probe on a sealed or uninitialized server | Unseal, or allow sealed state in the probe ([04 §6](04-server-workload.md#6-liveness-probe)) |
 | No StatefulSet at all | Resolved mode is `""` (`standalone.enabled: false` without HA) or `external` | [02-concepts.md §1](02-concepts.md#1-deployment-mode-resolution) |
+| `CrashLoopBackOff` in standalone/dev after a chart upgrade, log `contains data of the legacy 'file' storage backend` | The data PVC still holds `file` backend data; standalone now uses single-node Raft | Migrate with `bao operator migrate` ([09 §8.5](09-deployment-modes.md#85-migrating-a-file-backed-standalone-to-raft)), or set `server.standalone.legacyFileDataCheck: false` to discard it |
+| Standalone log `failed to join raft cluster` / `retry_join` errors | A custom `standalone.config` contains `retry_join` | Remove `retry_join` from `standalone.config`; use HA mode for multiple nodes |
+| Standalone log `permission denied` for `pods` / `service_registration` | `service_registration "kubernetes"` in `standalone.config`, but no discovery Role in standalone | Remove the stanza ([08-security-and-rbac.md](08-security-and-rbac.md)) |
+| Second standalone pod with its own empty cluster | StatefulSet scaled manually (`kubectl scale`) | Scale back to 1; to add nodes switch to HA ([09 §8.2](09-deployment-modes.md#82-standalone-to-ha-with-raft)) |
 
 ---
 

@@ -27,7 +27,8 @@ the upstream chart.
 | Agent Injector (mutating webhook) | Deployed | **Not deployed** (templates moved out of `templates/`) |
 | Secrets Store CSI provider | Deployed | **Not deployed** |
 | Default mode | Standalone | **Persistent dev mode** (`server.dev_mode.enabled: true`) with auto-init and auto-unseal |
-| Dev mode storage | In-memory | `file` backend on a PVC; data survives restarts |
+| Dev mode storage | In-memory | Single-node integrated Raft on a PVC; data survives restarts |
+| Standalone storage | `file` backend | **Single-node integrated Raft** (`storage "raft"`, node ID = pod name): Raft snapshots, snapshot agent, in-place move to HA Raft |
 | TLS | Manual (`extraVolumes` plus your own HCL) | Built in: `server.tls.*` with cert-manager, inline certs or an existing secret |
 | Data PVC | Optional (`dataStorage.enabled`) | **Mandatory**; there is no `enabled` switch |
 | Identity labels | Standard Helm labels | Additional `SERVICE_NAME`, `APPLICATION_NAME`, `MANAGED_BY`, `DEPLOYMENT_SESSION_ID` values used by the Netcracker deployer |

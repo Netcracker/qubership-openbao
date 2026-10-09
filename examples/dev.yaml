@@ -54,7 +54,8 @@ server:
   standalone:
     enabled: "-"
 
-  # Small PVC for the file backend. Data and bootstrap-keys.json live here.
+  # Small PVC for the single-node Raft storage. Data (vault.db, raft/) and
+  # bootstrap-keys.json live here.
   dataStorage:
     size: 1Gi
     # storageClass: standard          # omit to use the cluster default

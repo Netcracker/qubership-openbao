@@ -14,7 +14,7 @@ Pick exactly one.
 | File | Mode | Production | Needs |
 |------|------|------------|-------|
 | [`dev.yaml`](dev.yaml) | Persistent dev server, auto-init and auto-unseal, plain HTTP | No | StorageClass |
-| [`standalone.yaml`](standalone.yaml) | 1 replica, `file` backend, TLS, audit volume | Limited | StorageClass, cert-manager |
+| [`standalone.yaml`](standalone.yaml) | 1 replica, single-node integrated Raft, TLS, audit volume | Limited | StorageClass, cert-manager |
 | [`ha-raft.yaml`](ha-raft.yaml) | 3 replicas, integrated Raft, TLS, generated `retry_join` with CA, telemetry | **Yes** | 3 nodes, SSD StorageClass, cert-manager |
 | [`ha-postgresql.yaml`](ha-postgresql.yaml) | 2 replicas, PostgreSQL backend, TLS | Yes | PostgreSQL, Secret `openbao-pg`, cert-manager |
 | [`external.yaml`](external.yaml) | No server; reviewer ServiceAccount for an external OpenBao, optional snapshot agent | n/a | An external OpenBao |
@@ -26,7 +26,7 @@ Add after a base file with another `-f`. Later files win.
 | File | Adds | Use with |
 |------|------|----------|
 | [`overlays/monitoring.yaml`](overlays/monitoring.yaml) | ServiceMonitor, PrometheusRule with alerts, Grafana dashboard | `ha-raft.yaml`, `ha-postgresql.yaml` (their configs enable telemetry) |
-| [`overlays/snapshot-s3.yaml`](overlays/snapshot-s3.yaml) | Snapshot agent CronJob to S3 | `ha-raft.yaml` (Raft only) |
+| [`overlays/snapshot-s3.yaml`](overlays/snapshot-s3.yaml) | Snapshot agent CronJob to S3 | `ha-raft.yaml`, `standalone.yaml` (Raft storage only) |
 | [`overlays/openshift-route.yaml`](overlays/openshift-route.yaml) | Passthrough Route, OpenShift settings | `charts/openbao/values.openshift.yaml` + a base file |
 
 ```bash
@@ -34,6 +34,39 @@ helm upgrade --install openbao ./charts/openbao -n openbao --create-namespace \
   -f examples/ha-raft.yaml \
   -f examples/overlays/monitoring.yaml \
   -f examples/overlays/snapshot-s3.yaml
+```
+
+Standalone with scheduled snapshots (works because standalone now uses
+integrated Raft storage; the CronJob targets the `openbao` Service):
+
+```bash
+helm upgrade --install openbao ./charts/openbao -n openbao --create-namespace \
+  -f examples/standalone.yaml \
+  -f examples/overlays/snapshot-s3.yaml
+```
+
+## Standalone (single-node Raft) in practice
+
+```bash
+# 1. Install and initialize
+helm upgrade --install openbao ./charts/openbao -n openbao --create-namespace \
+  -f examples/standalone.yaml
+examples/scripts/init-unseal.sh -n openbao -r openbao
+
+# 2. Inspect the one-node Raft cluster
+kubectl -n openbao exec -it openbao-0 -- bao login
+kubectl -n openbao exec openbao-0 -- bao operator raft list-peers
+kubectl -n openbao exec openbao-0 -- bao operator raft autopilot state
+
+# 3. Online backup and restore
+kubectl -n openbao exec openbao-0 -- bao operator raft snapshot save /tmp/bao.snap
+kubectl -n openbao cp openbao-0:/tmp/bao.snap ./bao.snap
+kubectl -n openbao cp ./bao.snap openbao-0:/tmp/restore.snap
+kubectl -n openbao exec openbao-0 -- bao operator raft snapshot restore /tmp/restore.snap
+
+# 4. Grow to 3-node HA Raft later, keeping the data on openbao-0's PVC
+#    (full procedure: docs/chart/09-deployment-modes.md, "Standalone -> HA Raft")
+helm upgrade openbao ./charts/openbao -n openbao -f examples/ha-raft.yaml
 ```
 
 ## Scripts

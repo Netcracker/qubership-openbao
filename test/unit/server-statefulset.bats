@@ -297,6 +297,54 @@ load _helpers
 }
 
 #--------------------------------------------------------------------
+# standalone = single-node integrated Raft storage
+
+@test "server/standalone-StatefulSet: BAO_RAFT_NODE_ID is always the pod name" {
+  cd `chart_dir`
+  local actual=$(helm template \
+      --show-only templates/server-statefulset.yaml  \
+      --set 'server.dev_mode.enabled=false' \
+      --set 'server.standalone.enabled=true' \
+      . | tee /dev/stderr |
+      yq -r '.spec.template.spec.containers[0].env[] | select(.name=="BAO_RAFT_NODE_ID") | .valueFrom.fieldRef.fieldPath' | tee /dev/stderr)
+  [ "${actual}" = "metadata.name" ]
+}
+
+@test "server/standalone-StatefulSet: legacy file data guard is rendered by default" {
+  cd `chart_dir`
+  local actual=$(helm template \
+      --show-only templates/server-statefulset.yaml  \
+      --set 'server.dev_mode.enabled=false' \
+      . | tee /dev/stderr |
+      yq -r '.spec.template.spec.containers[0].args[0]' | tee /dev/stderr)
+  echo "$actual" | grep -q 'legacy .file. storage backend'
+  echo "$actual" | grep -q 'DATA_DIR="/openbao/data"'
+}
+
+@test "server/standalone-StatefulSet: legacy file data guard can be disabled" {
+  cd `chart_dir`
+  local actual=$(helm template \
+      --show-only templates/server-statefulset.yaml  \
+      --set 'server.dev_mode.enabled=false' \
+      --set 'server.standalone.legacyFileDataCheck=false' \
+      . | tee /dev/stderr |
+      yq -r '.spec.template.spec.containers[0].args[0]' | tee /dev/stderr)
+  [ -z "$(echo "$actual" | grep 'DATA_DIR=')" ]
+}
+
+@test "server/ha-StatefulSet: legacy file data guard is not rendered in HA" {
+  cd `chart_dir`
+  local actual=$(helm template \
+      --show-only templates/server-statefulset.yaml  \
+      --set 'server.dev_mode.enabled=false' \
+      --set 'server.ha.enabled=true' \
+      --set 'server.ha.raft.enabled=true' \
+      . | tee /dev/stderr |
+      yq -r '.spec.template.spec.containers[0].args[0]' | tee /dev/stderr)
+  [ -z "$(echo "$actual" | grep 'DATA_DIR=')" ]
+}
+
+#--------------------------------------------------------------------
 # resources
 
 @test "server/standalone-StatefulSet: default resources" {

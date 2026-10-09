@@ -3,8 +3,8 @@
 # SPDX-License-Identifier: MPL-2.0
 #
 # init-unseal.sh - initialize and unseal an OpenBao release installed with
-# the qubership-openbao chart (standalone, HA with Raft, or HA with an
-# external backend), using Shamir unseal keys.
+# the qubership-openbao chart (standalone single-node Raft, HA with Raft, or
+# HA with an external backend), using Shamir unseal keys.
 #
 # What it does:
 #   1. Waits for pod <release>-0 to run.
@@ -71,7 +71,7 @@ Options:
   -h, --help               Show this help
 
 Examples:
-  $SCRIPT_NAME -n openbao -r openbao                 # standalone
+  $SCRIPT_NAME -n openbao -r openbao                 # standalone (single-node Raft)
   $SCRIPT_NAME -n openbao -r openbao -p 3            # HA with Raft
   $SCRIPT_NAME -n openbao -r openbao -p 2 --no-raft  # HA with PostgreSQL
 EOF
@@ -259,7 +259,7 @@ log "all $PODS pod(s) unsealed and Ready"
 kubectl -n "$NAMESPACE" get pods -l "app.kubernetes.io/instance=${RELEASE},component=server" \
   -L openbao-active,openbao-sealed >&2 || true
 
-if (( RAFT && PODS > 1 )); then
+if (( RAFT )); then
   log "check Raft membership with a token:"
   log "  kubectl -n $NAMESPACE exec -it $LEADER -- bao login"
   log "  kubectl -n $NAMESPACE exec $LEADER -- bao operator raft list-peers"

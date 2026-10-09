@@ -47,6 +47,7 @@ chart.
 | 26 | Docs | `installation.md` / `architecture.md` describe HA with Consul and an in-memory-like dev mode | Low |
 | 27 | Tests | Unit tests use upstream value names (`server.dev.enabled`) | Medium |
 | 28 | Services | `server.service.type` / `clusterIP` documented only in comments | Low |
+| 29 | Modes | Standalone on Raft: legacy `file` volumes need migration; HA move needs `setNodeId` | Medium |
 
 ---
 
@@ -484,3 +485,30 @@ or NodePort", but the template passes any value through, including
 
 **Suggested fix.** Declare them (`type: ClusterIP`, `clusterIP: ""`) and
 update the comment.
+
+---
+
+## 29. Standalone on Raft: upgrade caveats
+
+Standalone (and dev) mode now runs single-node integrated Raft storage
+instead of the `file` backend.
+
+**Evidence and impact.**
+
+- Existing volumes with `file` data cannot be read by Raft. The container
+  command detects them (`<mountPath>/core` present, `<mountPath>/vault.db`
+  absent) and exits, so the server never comes up empty. The check is a
+  heuristic: it does not run when the config has no `storage "raft"` block,
+  and it can be bypassed with `server.standalone.legacyFileDataCheck: false`.
+- The move to HA Raft in place requires `server.ha.raft.setNodeId: true`.
+  Without it, HA pods get no `BAO_RAFT_NODE_ID`. `openbao-0` then has no
+  `node-id` file (standalone always passed the ID through the environment),
+  generates a random ID that is not in the stored Raft configuration, and
+  cannot become leader (verify for your version).
+- The default `server.ha.raft.config` still hard-codes
+  `path = "/openbao/data"`, while the standalone default follows
+  `server.dataStorage.mountPath`. With a non-default `mountPath`, override
+  the HA config before switching modes.
+
+**Suggested fix.** Make `setNodeId` default to `true`, and template the
+Raft path in `server.ha.raft.config` too.

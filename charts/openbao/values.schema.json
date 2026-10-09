@@ -787,6 +787,9 @@
                         },
                         "enabled": {
                             "type": ["string", "boolean"]
+                        },
+                        "legacyFileDataCheck": {
+                            "type": ["boolean", "string"]
                         }
                     }
                 },

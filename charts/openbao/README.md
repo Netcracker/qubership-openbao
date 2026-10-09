@@ -52,10 +52,10 @@ Kubernetes: `>= 1.30.0-0`
 | server.dataStorage.annotations | object | `{}` |  |
 | server.dataStorage.labels | object | `{}` |  |
 | server.dataStorage.mountPath | string | `"/openbao/data"` |  |
-| server.dataStorage.size | string | `"10Gi"` | Size of the data PVC. Data persistence is mandatory for the file/raft backends (standalone, HA raft, dev); the chart always creates this PVC and there is no `enabled` switch. |
+| server.dataStorage.size | string | `"10Gi"` | Size of the data PVC. Data persistence is mandatory for integrated Raft storage (standalone, HA raft, dev); the chart always creates this PVC and there is no `enabled` switch. |
 | server.dataStorage.storageClass | string | `nil` |  |
-| server.dev_mode.config | string | *(multi-line)* | HCL config for the persistent dev server (file storage backend on the data PVC). |
-| server.dev_mode.enabled | bool | `true` | Run OpenBao in persistent dev mode (file backend on the data PVC, auto-init and auto-unseal). Shipped default; development/testing only. Mutually exclusive with `server.ha.enabled`; the chart fails to render if both are `true`. |
+| server.dev_mode.config | string | *(multi-line)* | HCL config for the persistent dev server (single-node Raft on the data PVC). Currently not rendered: dev mode uses `server.standalone.config`. |
+| server.dev_mode.enabled | bool | `true` | Run OpenBao in persistent dev mode (single-node Raft on the data PVC, auto-init and auto-unseal). Shipped default; development/testing only. Mutually exclusive with `server.ha.enabled`; the chart fails to render if both are `true`. |
 | server.enabled | string | `"-"` |  |
 | server.extraArgs | string | `""` | extraArgs is a string containing additional OpenBao server arguments. |
 | server.extraContainers | string | `nil` |  |
@@ -179,8 +179,9 @@ Kubernetes: `>= 1.30.0-0`
 | server.serviceAccount.name | string | `""` |  |
 | server.serviceAccount.serviceDiscovery.enabled | bool | `true` |  |
 | server.shareProcessNamespace | bool | `false` | shareProcessNamespace enables process namespace sharing between OpenBao and the extraContainers This is useful if OpenBao must be signaled, e.g. to send a SIGHUP for a log rotation |
-| server.standalone.config | string | (HCL) | Standalone server HCL config. The `listener "tcp"` block is templated: it renders `tls_disable = 1` when `global.tlsDisable=true`, otherwise `tls_cert_file`/`tls_key_file`/`tls_min_version` (and `tls_cipher_suites` when set) from `server.tls.*`. |
-| server.standalone.enabled | string | `"-"` |  |
+| server.standalone.config | string | (HCL) | Standalone server HCL config. Uses single-node integrated storage: `storage "raft" { path = "<server.dataStorage.mountPath>" }` with no `retry_join`; the node ID is the pod name (`BAO_RAFT_NODE_ID`). The `listener "tcp"` block is templated: it renders `tls_disable = 1` when `global.tlsDisable=true`, otherwise `tls_cert_file`/`tls_key_file`/`tls_min_version` (and `tls_cipher_suites` when set) from `server.tls.*`. |
+| server.standalone.enabled | string | `"-"` | Standalone mode: one replica, one-node Raft cluster. Supports Raft snapshots and the snapshot agent; can be moved in place to HA Raft. |
+| server.standalone.legacyFileDataCheck | bool | `true` | Refuse to start when `server.dataStorage.mountPath` holds data of the legacy `file` backend (`core/` without `vault.db`). Migrate with `bao operator migrate` first (docs/chart/09-deployment-modes.md §8.5). |
 | server.statefulSet.annotations | object | `{}` |  |
 | server.statefulSet.securityContext.container | object | `{}` |  |
 | server.statefulSet.securityContext.pod | object | `{}` |  |

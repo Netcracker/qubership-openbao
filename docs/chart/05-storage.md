@@ -21,7 +21,7 @@ and file ownership. The PVCs are created by the `openbao.volumeclaims` helper
 
 | Resolved mode | `data` PVC | `audit` PVC | Where the secrets live |
 |---------------|-----------|-------------|------------------------|
-| `standalone` (including dev mode) | Always | If `server.auditStorage.enabled` | `file` backend on the data PVC |
+| `standalone` (including dev mode) | Always | If `server.auditStorage.enabled` | Single-node integrated Raft on the data PVC (`vault.db`, `raft/`) |
 | `ha` with `raft.enabled: true` | Always, one per replica | If enabled, one per replica | Integrated Raft on each replica's data PVC |
 | `ha` with `raft.enabled: false` (external storage) | **None** | If enabled | External database (PostgreSQL). The default Consul config is not supported by OpenBao 2.x |
 | `external` | None | None | External server |
@@ -45,7 +45,7 @@ example `data-openbao-0` and `audit-openbao-2`.
 ### Why there is no `enabled` switch
 
 Upstream allows `dataStorage.enabled: false`. This distribution removes that
-switch. For the `file` and `raft` backends the data would otherwise be
+switch. For integrated Raft storage the data would otherwise be
 written to the container's writable layer:
 
 - every restart would lose all secrets;
@@ -54,9 +54,11 @@ written to the container's writable layer:
 
 ### Pitfall: `mountPath` and the HCL path
 
-`mountPath` changes only the **mount**. The default `standalone.config` and
-`ha.raft.config` hard-code `path = "/openbao/data"` in the `storage` block. If
-you change `mountPath`, change the HCL too, or reference the value:
+`mountPath` changes the **mount**. The default `standalone.config` uses
+`path = "{{ .Values.server.dataStorage.mountPath }}"` and follows it
+automatically. The default `ha.raft.config` still hard-codes
+`path = "/openbao/data"`; if you change `mountPath` in HA, change the HCL too,
+or reference the value. The same applies to a custom `standalone.config`:
 
 ```yaml
 server:
@@ -69,13 +71,26 @@ server:
         address     = "[::]:8200"
         tls_disable = 1
       }
-      storage "file" {
+      storage "raft" {
         path = "{{ .Values.server.dataStorage.mountPath }}"
       }
 ```
 
-The dev-mode bootstrap script also uses `mountPath` to find
-`bootstrap-keys.json`.
+The dev-mode bootstrap script and the standalone legacy-data guard also use
+`mountPath` (for `bootstrap-keys.json` and the `core/` / `vault.db` check).
+
+### Legacy `file` data on the volume
+
+Older chart versions ran standalone and dev mode on the `file` backend. Its
+data (`core/`, `logical/`, `sys/`) cannot be read by Raft. When the container
+finds `<mountPath>/core` but no `<mountPath>/vault.db`, it exits before
+starting `bao server` instead of presenting an empty, uninitialized server.
+
+| Situation | Action |
+|-----------|--------|
+| The data must be kept | Migrate once with `bao operator migrate`: [09-deployment-modes.md §8.5](09-deployment-modes.md#85-migrating-a-file-backed-standalone-to-raft) |
+| The data can be discarded | Delete the PVC, or set `server.standalone.legacyFileDataCheck: false` |
+| You run a custom `standalone.config` with `storage "file"` on purpose | The guard only applies to configs with `storage "raft"`; nothing to do |
 
 ### Access mode
 
@@ -340,4 +355,5 @@ If a dev instance holds data you want to keep before moving to standalone:
    bao token revoke <root-token>
    ```
 
-The storage backend stays `file`, so the data on the PVC is reused.
+Dev and standalone both use single-node Raft storage at the same path, so
+the data on the PVC is reused.

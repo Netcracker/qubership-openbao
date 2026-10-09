@@ -707,10 +707,12 @@ server:
     # This should be a YAML map of the labels to apply to the service
     extraLabels: {}
 
-  # This configures the OpenBao StatefulSet's data PVC for the file and raft
-  # backend storage engines. Data persistence is mandatory and cannot be turned
-  # off: for standalone (file), HA with integrated Raft, and the persistent dev
-  # mode the chart always creates a PersistentVolumeClaim mounted at mountPath.
+  # This configures the OpenBao StatefulSet's data PVC for the integrated
+  # storage (Raft) backend. Data persistence is mandatory and cannot be turned
+  # off: for standalone (single-node Raft), HA with integrated Raft, and the
+  # persistent dev mode the chart always creates a PersistentVolumeClaim
+  # mounted at mountPath. The default standalone config uses mountPath as the
+  # Raft `path`, so changing it keeps both in sync.
   # There is deliberately no `enabled` switch — disabling it would send the
   # store to the ephemeral container layer and lose all data on every restart
   # (and, in HA/raft, drop the node from quorum).
@@ -760,8 +762,9 @@ server:
     labels: {}
 
   # Run OpenBao in "dev_mode". Despite the name, this is a *persistent*
-  # development server: it uses the `file` storage backend on the data PVC
-  # (server.dataStorage) so data survives pod restarts, and a postStart hook
+  # development server: it runs on the standalone code path (single-node
+  # integrated Raft storage on the data PVC, server.dataStorage) so data
+  # survives pod restarts, and a postStart hook
   # automatically initializes it on first boot and auto-unseals it on every
   # (re)start. Intended for development / testing, not production.
   # NOTE: mutually exclusive with server.ha.enabled — dev mode is a
@@ -770,10 +773,10 @@ server:
   dev_mode:
     enabled: true
 
-    # -- HCL configuration for the persistent dev server. Uses the `file`
-    # storage backend on the data PVC (server.dataStorage) so data persists
-    # across restarts. The listener always runs plain HTTP: dev mode does not
-    # provision TLS material, so do not enable TLS for dev deployments.
+    # -- HCL configuration for the persistent dev server.
+    # NOTE: currently NOT rendered — dev mode uses server.standalone.config
+    # (see docs/chart/14-known-issues.md #1). Kept in sync with it: single-node
+    # Raft on the data PVC, plain-HTTP listener.
     config: |
       ui = true
 
@@ -782,22 +785,48 @@ server:
         cluster_address = "[::]:8201"
         tls_disable = 1
       }
-      storage "file" {
+      storage "raft" {
         path = "{{ .Values.server.dataStorage.mountPath }}"
       }
 
 
   # Run OpenBao in "standalone" mode. This is the default mode that will deploy if
-  # no arguments are given to helm. This requires a PVC for data storage to use
-  # the "file" backend.  This mode is not highly available and should not be scaled
-  # past a single replica.
+  # no arguments are given to helm. Standalone runs a single-node cluster on
+  # OpenBao's integrated storage (Raft consensus): the Raft log and FSM live on
+  # the data PVC (server.dataStorage). The single node is its own quorum (1 of 1)
+  # and is always the leader once unsealed.
+  #
+  # Compared to the legacy "file" backend this gives:
+  #   * the same storage engine as server.ha.raft, so a standalone release can be
+  #     scaled out to a 3/5-node HA Raft cluster in place (see
+  #     docs/chart/09-deployment-modes.md, "Standalone -> HA Raft");
+  #   * online snapshots (`bao operator raft snapshot save/restore`) and the
+  #     chart's snapshot agent (server.snapshotAgent);
+  #   * `bao operator raft list-peers` / autopilot health for monitoring.
+  #
+  # The mode is still NOT highly available: the StatefulSet always has exactly
+  # one replica. The Raft node ID is pinned to the pod name (BAO_RAFT_NODE_ID)
+  # so it is stable across restarts and matches server.ha.raft.setNodeId=true.
   standalone:
     enabled: "-"
 
+    # Safety guard for upgrades from chart versions whose standalone mode used
+    # the `file` storage backend. When true (default) the server container
+    # refuses to start if the data volume contains file-backend data
+    # (`<mountPath>/core`) but no Raft database (`<mountPath>/vault.db`),
+    # instead of silently starting an empty Raft node next to the old data.
+    # Set to false only after migrating (or intentionally discarding) the data.
+    legacyFileDataCheck: true
+
     # config is a raw string of default configuration when using a Stateful
-    # deployment. Default is to use a PersistentVolumeClaim mounted at /openbao/data
-    # and store data there. This is only used when using a Replica count of 1, and
-    # using a stateful set. This should be HCL.
+    # deployment. The default stores the single-node Raft data on the
+    # PersistentVolumeClaim mounted at server.dataStorage.mountPath. This
+    # should be HCL (or a YAML map, rendered as JSON).
+    #
+    # When overriding this value keep a `storage "raft"` block whose `path`
+    # equals server.dataStorage.mountPath, and do NOT add `retry_join` blocks
+    # or `service_registration "kubernetes"` (no discovery RBAC is created in
+    # standalone mode).
 
     # Note: Configuration files are stored in ConfigMaps so sensitive data
     # such as passwords should be either mounted through extraSecretEnvironmentVars
@@ -827,8 +856,12 @@ server:
         #  unauthenticated_metrics_access = "true"
         #}
       }
-      storage "file" {
-        path = "/openbao/data"
+
+      # Single-node integrated storage (Raft). node_id is taken from the
+      # BAO_RAFT_NODE_ID environment variable (the pod name) and cluster_addr
+      # from BAO_CLUSTER_ADDR, both injected by the StatefulSet.
+      storage "raft" {
+        path = "{{ .Values.server.dataStorage.mountPath }}"
       }
 
       # Example configuration for using auto-unseal, using Google Cloud KMS. The

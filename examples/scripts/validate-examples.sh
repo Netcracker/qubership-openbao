@@ -41,6 +41,7 @@ API_VERSIONS=(
 CASES=(
   "dev|dev.yaml|StatefulSet ConfigMap Service"
   "standalone|standalone.yaml|StatefulSet Certificate Issuer"
+  "standalone+snapshot|standalone.yaml overlays/snapshot-s3.yaml|CronJob"
   "ha-raft|ha-raft.yaml|StatefulSet PodDisruptionBudget Role Certificate"
   "ha-raft+monitoring|ha-raft.yaml overlays/monitoring.yaml|ServiceMonitor PrometheusRule"
   "ha-raft+snapshot|ha-raft.yaml overlays/snapshot-s3.yaml|CronJob"
