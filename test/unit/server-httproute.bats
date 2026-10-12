@@ -16,6 +16,7 @@ load _helpers
   local actual=$(helm template \
       --show-only templates/server-httproute.yaml  \
       --set 'server.gateway.httpRoute.enabled=true' \
+      --set 'server.gateway.httpRoute.parentRefs[0].name=my-gw' \
       --namespace foo \
       . | tee /dev/stderr |
       yq -r '.metadata.namespace' | tee /dev/stderr)
@@ -23,6 +24,7 @@ load _helpers
   local actual=$(helm template \
       --show-only templates/server-httproute.yaml  \
       --set 'server.gateway.httpRoute.enabled=true' \
+      --set 'server.gateway.httpRoute.parentRefs[0].name=my-gw' \
       --set 'global.namespace=bar' \
       --namespace foo \
       . | tee /dev/stderr |
@@ -35,6 +37,7 @@ load _helpers
   local actual=$(helm template \
       --show-only templates/server-httproute.yaml  \
       --set 'server.gateway.httpRoute.enabled=true' \
+      --set 'server.gateway.httpRoute.parentRefs[0].name=my-gw' \
       . | tee /dev/stderr |
       yq -r '.apiVersion | length > 0' | tee /dev/stderr)
   [ "${actual}" = "true" ]
@@ -45,6 +48,7 @@ load _helpers
   local actual=$( (helm template \
       --show-only templates/server-httproute.yaml  \
       --set 'server.gateway.httpRoute.enabled=true' \
+      --set 'server.gateway.httpRoute.parentRefs[0].name=my-gw' \
       --set 'global.externalVaultAddr=http://openbao-outside' \
       . || echo "---") | tee /dev/stderr |
       yq 'length > 0' | tee /dev/stderr)
@@ -56,6 +60,7 @@ load _helpers
   local actual=$(helm template \
       --show-only templates/server-httproute.yaml \
       --set 'server.gateway.httpRoute.enabled=true' \
+      --set 'server.gateway.httpRoute.parentRefs[0].name=my-gw' \
       --set 'server.gateway.httpRoute.hosts[0]=test.com' \
       . | tee /dev/stderr |
       yq  -r '.spec.hostnames[0]' | tee /dev/stderr)
@@ -68,6 +73,7 @@ load _helpers
   local actual=$(helm template \
       --show-only templates/server-httproute.yaml \
       --set 'server.gateway.httpRoute.enabled=true' \
+      --set 'server.gateway.httpRoute.parentRefs[0].name=my-gw' \
       --set 'server.gateway.httpRoute.hosts[0]=test.com' \
       . | tee /dev/stderr |
       yq  -r '.spec.rules[0].backendRefs[0].name  | length > 0' | tee /dev/stderr)
@@ -81,6 +87,7 @@ load _helpers
   local actual=$(helm template \
       --show-only templates/server-httproute.yaml \
       --set 'server.gateway.httpRoute.enabled=true' \
+      --set 'server.gateway.httpRoute.parentRefs[0].name=my-gw' \
       --set 'server.gateway.httpRoute.labels.traffic=external' \
       --set 'server.gateway.httpRoute.labels.team=dev' \
       . | tee /dev/stderr |
@@ -94,6 +101,7 @@ load _helpers
   local actual=$(helm template \
       --show-only templates/server-httproute.yaml \
       --set 'server.gateway.httpRoute.enabled=true' \
+      --set 'server.gateway.httpRoute.parentRefs[0].name=my-gw' \
       --set 'server.gateway.httpRoute.annotations=kubernetes.io/ingress.class: nginx' \
       . | tee /dev/stderr |
       yq -r '.metadata.annotations["kubernetes.io/ingress.class"]' | tee /dev/stderr)
@@ -106,6 +114,7 @@ load _helpers
   local actual=$(helm template \
       --show-only templates/server-httproute.yaml \
       --set 'server.gateway.httpRoute.enabled=true' \
+      --set 'server.gateway.httpRoute.parentRefs[0].name=my-gw' \
       --set server.gateway.httpRoute.annotations."kubernetes\.io/ingress\.class"=nginx \
       . | tee /dev/stderr |
       yq -r '.metadata.annotations["kubernetes.io/ingress.class"]' | tee /dev/stderr)
@@ -118,6 +127,7 @@ load _helpers
   local actual=$(helm template \
       --show-only templates/server-httproute.yaml \
       --set 'server.gateway.httpRoute.enabled=true' \
+      --set 'server.gateway.httpRoute.parentRefs[0].name=my-gw' \
       --set 'server.dev.enabled=false' \
       --set 'server.ha.enabled=true' \
       --set 'server.service.enabled=true' \
@@ -132,6 +142,7 @@ load _helpers
   local actual=$(helm template \
       --show-only templates/server-httproute.yaml \
       --set 'server.gateway.httpRoute.enabled=true' \
+      --set 'server.gateway.httpRoute.parentRefs[0].name=my-gw' \
       --set 'server.gateway.httpRoute.activeService=false' \
       --set 'server.dev.enabled=false' \
       --set 'server.ha.enabled=true' \
@@ -147,6 +158,7 @@ load _helpers
   local actual=$(helm template \
       --show-only templates/server-httproute.yaml \
       --set 'server.gateway.httpRoute.enabled=true' \
+      --set 'server.gateway.httpRoute.parentRefs[0].name=my-gw' \
       --set 'server.dev.enabled=false' \
       --set 'server.ha.enabled=false' \
       --set 'server.service.enabled=true' \
@@ -161,6 +173,7 @@ load _helpers
   local actual=$(helm template \
       --show-only templates/server-httproute.yaml \
       --set 'server.gateway.httpRoute.enabled=true' \
+      --set 'server.gateway.httpRoute.parentRefs[0].name=my-gw' \
       --set 'server.gateway.httpRoute.activeService=true' \
       --set 'server.dev.enabled=false' \
       --set 'server.ha.enabled=false' \
@@ -176,6 +189,7 @@ load _helpers
   local path=$(helm template \
       --show-only templates/server-httproute.yaml \
       --set 'server.gateway.httpRoute.enabled=true' \
+      --set 'server.gateway.httpRoute.parentRefs[0].name=my-gw' \
       --set 'server.gateway.httpRoute.matches.path.type=Exact' \
       --set 'server.gateway.httpRoute.matches.path.value=/test' \
       --set 'server.service.enabled=true' \
@@ -193,6 +207,7 @@ load _helpers
   local actual=$(helm template \
       --show-only templates/server-httproute.yaml \
       --set 'server.gateway.httpRoute.enabled=true' \
+      --set 'server.gateway.httpRoute.parentRefs[0].name=my-gw' \
       --set 'server.service.enabled=true' \
       . | tee /dev/stderr |
       yq -r '.spec.rules[0].filters | length > 0' | tee /dev/stderr)
@@ -205,6 +220,7 @@ load _helpers
   local filter=$(helm template \
       --show-only templates/server-httproute.yaml \
       --set 'server.gateway.httpRoute.enabled=true' \
+      --set 'server.gateway.httpRoute.parentRefs[0].name=my-gw' \
       --set 'server.gateway.httpRoute.filters[0].type=RequestHeaderModifier' \
       --set 'server.gateway.httpRoute.filters[0].requestHeaderModifier.set[0].name=X-Forwarded-Proto' \
       --set 'server.gateway.httpRoute.filters[0].requestHeaderModifier.set[0].value=https' \
@@ -225,6 +241,7 @@ load _helpers
   local path=$(helm template \
       --show-only templates/server-httproute.yaml \
       --set 'server.gateway.httpRoute.enabled=true' \
+      --set 'server.gateway.httpRoute.parentRefs[0].name=my-gw' \
       --set 'server.service.enabled=true' \
       . | tee /dev/stderr |
       yq -r '.spec.rules[0].matches[0].path' | tee /dev/stderr)
@@ -232,4 +249,37 @@ load _helpers
   local actual_value=$(echo "${path}" | yq -r '.value' | tee /dev/stderr)
   [ "${actual_type}" = "PathPrefix" ]
   [ "${actual_value}" = "/" ]
+}
+
+@test "server/gateway/httproute: parentRefs rendered as array (not null)" {
+  cd `chart_dir`
+
+  # Regression: previously spec.parentRefs was emitted as `null` when the
+  # value was the default empty list, breaking the Gateway route.
+  local actual=$(helm template \
+      --show-only templates/server-httproute.yaml \
+      --set 'server.gateway.httpRoute.enabled=true' \
+      --set 'server.gateway.httpRoute.parentRefs[0].name=my-gw' \
+      . | tee /dev/stderr |
+      yq -r '.spec.parentRefs | tag' | tee /dev/stderr)
+  [ "${actual}" = "!!seq" ]
+
+  local name=$(helm template \
+      --show-only templates/server-httproute.yaml \
+      --set 'server.gateway.httpRoute.enabled=true' \
+      --set 'server.gateway.httpRoute.parentRefs[0].name=my-gw' \
+      . | tee /dev/stderr |
+      yq -r '.spec.parentRefs[0].name' | tee /dev/stderr)
+  [ "${name}" = "my-gw" ]
+}
+
+@test "server/gateway/httproute: empty parentRefs with enabled fails" {
+  cd `chart_dir`
+
+  run helm template \
+      --show-only templates/server-httproute.yaml \
+      --set 'server.gateway.httpRoute.enabled=true' \
+      .
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"parentRefs"* ]]
 }

@@ -138,6 +138,28 @@ load _helpers
   [ "${actual}" = "quay.io/foo:${appVersion}" ]
 }
 
+@test "server/standalone-StatefulSet: image registry is overridable (DEP-02)" {
+  cd `chart_dir`
+  # Overriding the registry must change the rendered image reference.
+  local actual=$(helm template \
+      --show-only templates/server-statefulset.yaml  \
+      --set 'server.image.registry=my-mirror.internal.example.com' \
+      --set 'server.image.repository=foo' \
+      --set 'server.image.tag=1.2.3' \
+      . | tee /dev/stderr |
+      yq -r '.spec.template.spec.containers[0].image' | tee /dev/stderr)
+  [ "${actual}" = "my-mirror.internal.example.com/foo:1.2.3" ]
+
+  # Default registry composes as registry/repository:tag.
+  local actual=$(helm template \
+      --show-only templates/server-statefulset.yaml  \
+      --set 'server.image.repository=foo' \
+      --set 'server.image.tag=1.2.3' \
+      . | tee /dev/stderr |
+      yq -r '.spec.template.spec.containers[0].image' | tee /dev/stderr)
+  [ "${actual}" = "quay.io/foo:1.2.3" ]
+}
+
 @test "server/standalone-StatefulSet: default imagePullPolicy" {
   cd `chart_dir`
   local actual=$(helm template \
@@ -210,23 +232,6 @@ load _helpers
   [ "${actual}" = "null" ]
 }
 
-@test "server/standalone-StatefulSet: adds dev mode secret volume and mount" {
-  cd `chart_dir`
-  local secret_name=$(helm template \
-      --show-only templates/server-statefulset.yaml  \
-      --set 'server.dev_mode.enabled=true' \
-      . | tee /dev/stderr |
-      yq -r '.spec.template.spec.volumes[] | select(.name=="static-key-volume") | .secret.secretName' | tee /dev/stderr)
-  [ "${secret_name}" = "bao-static-unseal-key" ]
-
-  local mount_path=$(helm template \
-      --show-only templates/server-statefulset.yaml  \
-      --set 'server.dev_mode.enabled=true' \
-      . | tee /dev/stderr |
-      yq -r '.spec.template.spec.containers[0].volumeMounts[] | select(.name=="static-key-volume") | .mountPath' | tee /dev/stderr)
-  [ "${mount_path}" = "/bao/secrets" ]
-}
-
 @test "server/standalone-StatefulSet: adds dev mode postStart init script" {
   cd `chart_dir`
   local script=$(helm template \
@@ -289,6 +294,54 @@ load _helpers
       . | tee /dev/stderr |
       yq -r '.spec.replicas' | tee /dev/stderr)
   [ "${actual}" = "1" ]
+}
+
+#--------------------------------------------------------------------
+# standalone = single-node integrated Raft storage
+
+@test "server/standalone-StatefulSet: BAO_RAFT_NODE_ID is always the pod name" {
+  cd `chart_dir`
+  local actual=$(helm template \
+      --show-only templates/server-statefulset.yaml  \
+      --set 'server.dev_mode.enabled=false' \
+      --set 'server.standalone.enabled=true' \
+      . | tee /dev/stderr |
+      yq -r '.spec.template.spec.containers[0].env[] | select(.name=="BAO_RAFT_NODE_ID") | .valueFrom.fieldRef.fieldPath' | tee /dev/stderr)
+  [ "${actual}" = "metadata.name" ]
+}
+
+@test "server/standalone-StatefulSet: legacy file data guard is rendered by default" {
+  cd `chart_dir`
+  local actual=$(helm template \
+      --show-only templates/server-statefulset.yaml  \
+      --set 'server.dev_mode.enabled=false' \
+      . | tee /dev/stderr |
+      yq -r '.spec.template.spec.containers[0].args[0]' | tee /dev/stderr)
+  echo "$actual" | grep -q 'legacy .file. storage backend'
+  echo "$actual" | grep -q 'DATA_DIR="/openbao/data"'
+}
+
+@test "server/standalone-StatefulSet: legacy file data guard can be disabled" {
+  cd `chart_dir`
+  local actual=$(helm template \
+      --show-only templates/server-statefulset.yaml  \
+      --set 'server.dev_mode.enabled=false' \
+      --set 'server.standalone.legacyFileDataCheck=false' \
+      . | tee /dev/stderr |
+      yq -r '.spec.template.spec.containers[0].args[0]' | tee /dev/stderr)
+  [ -z "$(echo "$actual" | grep 'DATA_DIR=')" ]
+}
+
+@test "server/ha-StatefulSet: legacy file data guard is not rendered in HA" {
+  cd `chart_dir`
+  local actual=$(helm template \
+      --show-only templates/server-statefulset.yaml  \
+      --set 'server.dev_mode.enabled=false' \
+      --set 'server.ha.enabled=true' \
+      --set 'server.ha.raft.enabled=true' \
+      . | tee /dev/stderr |
+      yq -r '.spec.template.spec.containers[0].args[0]' | tee /dev/stderr)
+  [ -z "$(echo "$actual" | grep 'DATA_DIR=')" ]
 }
 
 #--------------------------------------------------------------------
@@ -649,22 +702,12 @@ load _helpers
   cd `chart_dir`
   local actual=$(helm template \
       --show-only templates/server-statefulset.yaml  \
-      --set 'server.dataStorage.enabled=true' \
       --set 'server.dataStorage.storageClass=foo' \
       . | tee /dev/stderr |
       yq -r '.spec.volumeClaimTemplates[0].spec.storageClassName' | tee /dev/stderr)
   [ "${actual}" = "foo" ]
 
-  local actual=$(helm template \
-      --show-only templates/server-statefulset.yaml  \
-      --set 'server.standalone.enabled=true' \
-      --set 'server.dataStorage.enabled=false' \
-      --set 'server.auditStorage.enabled=true' \
-      --set 'server.auditStorage.storageClass=foo' \
-      . | tee /dev/stderr |
-      yq -r '.spec.volumeClaimTemplates[0].spec.storageClassName' | tee /dev/stderr)
-  [ "${actual}" = "foo" ]
-
+  # Data PVC is always created for standalone; audit is the second claim.
   local actual=$(helm template \
       --show-only templates/server-statefulset.yaml  \
       --set 'server.standalone.enabled=true' \
@@ -677,7 +720,6 @@ load _helpers
   local actual=$(helm template \
       --show-only templates/server-statefulset.yaml  \
       --set 'server.auditStorage.enabled=true' \
-      --set 'server.dataStorage.enabled=true' \
       . | tee /dev/stderr |
       yq -r '.spec.volumeClaimTemplates | length' | tee /dev/stderr)
   [ "${actual}" = "2" ]
@@ -686,52 +728,39 @@ load _helpers
       --show-only templates/server-statefulset.yaml  \
       --set 'server.standalone.enabled=true' \
       --set 'server.auditStorage.enabled=true' \
-      --set 'server.dataStorage.enabled=true' \
       . | tee /dev/stderr |
       yq -r '.spec.volumeClaimTemplates | length' | tee /dev/stderr)
   [ "${actual}" = "2" ]
 }
 
-@test "server/standalone-StatefulSet: can disable storage" {
+@test "server/standalone-StatefulSet: data PVC is mandatory, audit is optional" {
   cd `chart_dir`
+  # Data PVC is always present; audit disabled -> only the data claim.
   local actual=$(helm template \
       --show-only templates/server-statefulset.yaml  \
       --set 'server.auditStorage.enabled=false' \
-      --set 'server.dataStorage.enabled=true' \
       . | tee /dev/stderr |
       yq -r '.spec.volumeClaimTemplates | length' | tee /dev/stderr)
   [ "${actual}" = "1" ]
-
-  local actual=$(helm template \
+  local name=$(helm template \
       --show-only templates/server-statefulset.yaml  \
-      --set 'server.auditStorage.enabled=true' \
-      --set 'server.dataStorage.enabled=false' \
+      --set 'server.auditStorage.enabled=false' \
       . | tee /dev/stderr |
-      yq -r '.spec.volumeClaimTemplates | length' | tee /dev/stderr)
-  [ "${actual}" = "1" ]
+      yq -r '.spec.volumeClaimTemplates[0].metadata.name' | tee /dev/stderr)
+  [ "${name}" = "data" ]
 
   local actual=$(helm template \
       --show-only templates/server-statefulset.yaml  \
       --set 'server.standalone.enabled=true' \
       --set 'server.auditStorage.enabled=false' \
-      --set 'server.dataStorage.enabled=true' \
       . | tee /dev/stderr |
       yq -r '.spec.volumeClaimTemplates | length' | tee /dev/stderr)
   [ "${actual}" = "1" ]
 
-  local actual=$(helm template \
-      --show-only templates/server-statefulset.yaml  \
-      --set 'server.standalone.enabled=true' \
-      --set 'server.auditStorage.enabled=true' \
-      --set 'server.dataStorage.enabled=false' \
-      . | tee /dev/stderr |
-      yq -r '.spec.volumeClaimTemplates | length' | tee /dev/stderr)
-  [ "${actual}" = "1" ]
-
+  # audit enabled -> data + audit
   local actual=$(helm template \
       --show-only templates/server-statefulset.yaml  \
       --set 'server.auditStorage.enabled=true' \
-      --set 'server.dataStorage.enabled=true' \
       . | tee /dev/stderr |
       yq -r '.spec.volumeClaimTemplates | length' | tee /dev/stderr)
   [ "${actual}" = "2" ]
@@ -740,27 +769,18 @@ load _helpers
       --show-only templates/server-statefulset.yaml  \
       --set 'server.standalone.enabled=true' \
       --set 'server.auditStorage.enabled=true' \
-      --set 'server.dataStorage.enabled=true' \
       . | tee /dev/stderr |
       yq -r '.spec.volumeClaimTemplates | length' | tee /dev/stderr)
   [ "${actual}" = "2" ]
 
-  local actual=$(helm template \
-      --show-only templates/server-statefulset.yaml  \
-      --set 'server.auditStorage.enabled=fa;se' \
-      --set 'server.dataStorage.enabled=false' \
-      . | tee /dev/stderr |
-      yq -r '.spec.volumeClaimTemplates | length' | tee /dev/stderr)
-  [ "${actual}" = "0" ]
-
+  # The data claim cannot be turned off, so standalone always has at least one.
   local actual=$(helm template \
       --show-only templates/server-statefulset.yaml  \
       --set 'server.standalone.enabled=true' \
       --set 'server.auditStorage.enabled=false' \
-      --set 'server.dataStorage.enabled=false' \
       . | tee /dev/stderr |
       yq -r '.spec.volumeClaimTemplates | length' | tee /dev/stderr)
-  [ "${actual}" = "0" ]
+  [ "${actual}" = "1" ]
 }
 
 @test "server/standalone-StatefulSet: default audit storage mount path" {
@@ -792,7 +812,6 @@ load _helpers
   cd `chart_dir`
   local object=$(helm template \
       --show-only templates/server-statefulset.yaml  \
-      --set 'server.dataStorage.enabled=true' \
       . | tee /dev/stderr |
       yq -r '.spec.template.spec.containers[0].volumeMounts[] | select(.name == "data")' | tee /dev/stderr)
 
@@ -804,7 +823,6 @@ load _helpers
   cd `chart_dir`
   local object=$(helm template \
       --show-only templates/server-statefulset.yaml  \
-      --set 'server.dataStorage.enabled=true' \
       --set 'server.dataStorage.mountPath=/opt/vault' \
       . | tee /dev/stderr |
       yq -r '.spec.template.spec.containers[0].volumeMounts[] | select(.name == "data")' | tee /dev/stderr)
@@ -1614,7 +1632,6 @@ load _helpers
   cd `chart_dir`
   local actual=$(helm template \
       --show-only templates/server-statefulset.yaml \
-      --set 'server.dataStorage.enabled=true' \
       --set 'server.dataStorage.annotations=openBaoIsAwesome: true' \
       . | tee /dev/stderr |
       yq -r '.spec.volumeClaimTemplates[0].metadata.annotations["openBaoIsAwesome"]' | tee /dev/stderr)
@@ -1636,7 +1653,6 @@ load _helpers
   cd `chart_dir`
   local actual=$(helm template \
       --show-only templates/server-statefulset.yaml \
-      --set 'server.dataStorage.enabled=true' \
       --set 'server.dataStorage.annotations.openBaoIsAwesome=true' \
       . | tee /dev/stderr |
       yq -r '.spec.volumeClaimTemplates[0].metadata.annotations["openBaoIsAwesome"]' | tee /dev/stderr)
@@ -1962,7 +1978,6 @@ load _helpers
   cd `chart_dir`
   local actual=$(helm template \
       --show-only templates/server-statefulset.yaml \
-      --set 'server.dataStorage.enabled=true' \
       --set 'server.dataStorage.labels=openBaoIsAwesome: true' \
       . | tee /dev/stderr |
       yq -r '.spec.volumeClaimTemplates[0].metadata.labels["openBaoIsAwesome"]' | tee /dev/stderr)
@@ -1984,7 +1999,6 @@ load _helpers
   cd `chart_dir`
   local actual=$(helm template \
       --show-only templates/server-statefulset.yaml \
-      --set 'server.dataStorage.enabled=true' \
       --set 'server.dataStorage.labels.openBaoIsAwesome=true' \
       . | tee /dev/stderr |
       yq -r '.spec.volumeClaimTemplates[0].metadata.labels["openBaoIsAwesome"]' | tee /dev/stderr)

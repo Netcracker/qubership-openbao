@@ -29,8 +29,9 @@ Key capabilities:
 > the Agent Injector or the Secrets Store CSI provider. Those templates are kept
 > under `not-relevant/` and are not rendered. The shipped default is **dev
 > mode** (`server.dev_mode.enabled: true`). In this distribution dev mode is a
-> *persistent* development server (file backend on a PVC, auto-init and
-> auto-unseal); it is intended for development/testing, not production.
+> *persistent* development server (single-node integrated Raft on a PVC,
+> auto-init and auto-unseal); it is intended for development/testing, not
+> production.
 
 # Architecture schema
 
@@ -59,7 +60,7 @@ flowchart TB
 
       cfg[(Config ConfigMap)]
       tls[(TLS Secret)]
-      pvc[(Data PVC<br/>file / raft)]
+      pvc[(Data PVC<br/>integrated Raft)]
       cron[Snapshot Agent CronJob]
       sm[ServiceMonitor / PrometheusRule]
     end
@@ -90,13 +91,17 @@ evaluated in this precedence order:
 |------|-------------------------|-------------|
 | `external` | `global.externalBaoAddr` set, or `server.enabled: false` | No OpenBao server is deployed. Other resources point at an external OpenBao address. |
 | `ha` | `server.ha.enabled: true` | Highly-available multi-replica cluster (`server.ha.replicas`, default `3`). Storage backend is **Consul** by default (`server.ha.config`) or **integrated Raft** when `server.ha.raft.enabled: true` (`server.ha.raft.config`). |
-| `standalone` | `server.standalone.enabled: true` or `"-"` (default when nothing else selected) | Single-replica, non-HA server using the `file` storage backend at `/openbao/data`. Should not be scaled past one replica. |
-| `dev` | `server.dev_mode.enabled: true` (**shipped default**) | Persistent development server. Uses the `file` storage backend on the data PVC (`server.dataStorage`) so **data survives restarts**; auto-initialized on first boot and auto-unsealed on every start. Development/testing only. |
+| `standalone` | `server.standalone.enabled: true` or `"-"` (default when nothing else selected) | Single-replica, non-HA server running a **one-node integrated storage (Raft) cluster** on the data PVC (`server.dataStorage.mountPath`, default `/openbao/data`). The node ID is the pod name. Supports Raft snapshots and the snapshot agent, and can be grown in place into `ha` + `raft`. Always exactly one replica. |
+| `dev` | `server.dev_mode.enabled: true` (**shipped default**) | Persistent development server. Resolves to the `standalone` code path (single-node Raft on the data PVC) so **data survives restarts**; auto-initialized on first boot and auto-unsealed on every start. Development/testing only. |
 
 - Replica count is resolved by `openbao.replicas`: `1` for `standalone`/`dev`,
   `server.ha.replicas` (default `3`) for `ha`.
 - The server HCL config is selected per mode by `openbao.config`:
   `server.standalone.config`, `server.ha.raft.config`, or `server.ha.config`.
+- `server.dev_mode.enabled` and `server.ha.enabled` are **mutually
+  exclusive**: dev mode is a single-replica persistent server and cannot run
+  in HA. `openbao.mode` fails the render (`helm template`/`helm install`)
+  with an explicit error if both are set to `true`.
 
 # Components
 
@@ -110,12 +115,12 @@ The chart deploys the following Kubernetes resources
 - **ServiceAccount** (`server-serviceaccount.yaml`,
   `server-serviceaccount-secret.yaml`) — identity for the pods, with an optional
   non-expiring token secret.
-- **Dev token Secret** (`server-dev-token.yaml`) — static unseal key
-  (`bao-static-unseal-key`) used only in dev mode.
 - **PodDisruptionBudget** (`server-disruptionbudget.yaml`) — availability during
   voluntary disruptions (HA).
-- **Persistent Volume Claims** — created from `server.dataStorage` and
-  `server.auditStorage`.
+- **Persistent Volume Claims** — the data PVC (`server.dataStorage`) is always
+  created for integrated Raft storage (standalone, HA raft, dev); it has no
+  opt-out because Raft persists to disk. The audit PVC
+  (`server.auditStorage`) is opt-in via `server.auditStorage.enabled`.
 
 ### Services
 - **Client Service** (`server-service.yaml`) — main client entry point, port
@@ -181,11 +186,17 @@ The chart deploys the following Kubernetes resources
   `https://<pod>:8201` regardless of the client listener scheme.
 
 ### Storage
-- `dev` uses the `file` backend on the data PVC (`/openbao/data`), so dev data persists across restarts.
-- `standalone` uses the `file` backend on the data PVC (`/openbao/data`).
-- `ha` + `raft` uses integrated Raft storage on the same PVC across replicas.
+- `dev` and `standalone` run a single-node integrated Raft cluster on the data
+  PVC (`/openbao/data`): `vault.db` (FSM) and `raft/raft.db` (log). The node
+  is its own quorum (1/1) and has no `retry_join`. On start the container
+  refuses to run on a volume that still holds legacy `file` backend data
+  (`server.standalone.legacyFileDataCheck`).
+- `ha` + `raft` uses integrated Raft storage, one PVC per replica; nodes join
+  through `retry_join`. A standalone release moves to it in place, because
+  node ID (`<fullname>-0`), cluster address and data path are the same.
 - `ha` (default) uses an external Consul cluster as the storage backend.
 
 ### Backups
 - The snapshot agent CronJob calls `bao operator raft snapshot` against the
-  client Service on a schedule and can upload the snapshot to S3.
+  client Service on a schedule and can upload the snapshot to S3. It works in
+  `standalone` (single-node Raft) and `ha` + `raft`.

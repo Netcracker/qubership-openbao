@@ -1,6 +1,10 @@
 {{ template "openbao.mode" . }}
 {{- if ne .mode "external" }}
+{{- $httpRouteCRD := .Capabilities.APIVersions.Has (printf "%s/HTTPRoute" .Values.server.gateway.httpRoute.apiVersion) -}}
 {{- if .Values.server.gateway.httpRoute.enabled -}}
+{{- if not $httpRouteCRD -}}
+{{- fail (printf "server.gateway.httpRoute.enabled=true, but %s/HTTPRoute is not served by this cluster. Install the Gateway API channel that provides HTTPRoute, or set server.gateway.httpRoute.apiVersion to a version this cluster serves." .Values.server.gateway.httpRoute.apiVersion) -}}
+{{- end -}}
 {{- $serviceName := include "openbao.fullname" . -}}
 {{- template "openbao.serverServiceEnabled" . -}}
 {{- if .serverServiceEnabled -}}
@@ -31,6 +35,9 @@ spec:
   hostnames:
   {{- range .Values.server.gateway.httpRoute.hosts }}
     - {{ . | quote }}
+  {{- end }}
+  {{- if not .Values.server.gateway.httpRoute.parentRefs }}
+  {{- fail "server.gateway.httpRoute.enabled is true but server.gateway.httpRoute.parentRefs is empty: an HTTPRoute must reference at least one parent Gateway. Set server.gateway.httpRoute.parentRefs." }}
   {{- end }}
   parentRefs:
   {{- with .Values.server.gateway.httpRoute.parentRefs }}

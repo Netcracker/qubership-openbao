@@ -24,6 +24,10 @@ Kubernetes: `>= 1.30.0-0`
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
+| SERVICE_NAME | string | `"openbao"` | Value of the `app.kubernetes.io/name` label applied to all objects and used by the ServiceMonitor selector. Must be non-empty; normally supplied by the Netcracker deploy descriptor. |
+| APPLICATION_NAME | string | `"openbao"` | Value of the `app.kubernetes.io/part-of` label. |
+| MANAGED_BY | string | `"Helm"` | Value of the `app.kubernetes.io/managed-by` label. |
+| DEPLOYMENT_SESSION_ID | string | `""` | Value of the `deployment.netcracker.com/sessionId` label. |
 | extraObjects | list | `[]` |  |
 | global.enabled | bool | `true` | enabled is the master enabled switch. Setting this to true or false will enable or disable all the components within this chart by default. |
 | global.externalBaoAddr | string | `""` | External openbao server address for the injector and CSI provider to use. Setting this will disable deployment of an OpenBao server. |
@@ -32,7 +36,7 @@ Kubernetes: `>= 1.30.0-0`
 | global.namespace | string | `""` | The namespace to deploy to. Defaults to the `helm` installation namespace. |
 | global.openshift | bool | `false` | If deploying to OpenShift |
 | global.serverTelemetry.prometheusOperator | bool | `false` | Enable integration with the Prometheus Operator See the top level serverTelemetry section below before enabling this feature. |
-| global.tlsDisable | bool | `true` | TLS for end-to-end encrypted transport |
+| global.tlsDisable | bool | `true` | Single switch for server TLS (end-to-end encrypted transport). The `server.tls.*` block only takes effect when this is `false`; the chart cross-validates the two and fails rendering if server TLS material is set while this stays `true`, if `source=rawCerts` lacks `certs.crt`/`certs.key`, or if `source=existingSecret` lacks `secretName`. |
 | server.affinity | string | `"podAntiAffinity:\n  requiredDuringSchedulingIgnoredDuringExecution:\n    - labelSelector:\n        matchLabels:\n          app.kubernetes.io/name: {{ template \"openbao.name\" . }}\n          app.kubernetes.io/instance: \"{{ .Release.Name }}\"\n          component: server\n      topologyKey: kubernetes.io/hostname\n"` |  |
 | server.annotations | object | `{}` |  |
 | server.auditStorage.accessMode | string | `"ReadWriteOnce"` |  |
@@ -46,13 +50,12 @@ Kubernetes: `>= 1.30.0-0`
 | server.configAnnotation | bool | `false` |  |
 | server.dataStorage.accessMode | string | `"ReadWriteOnce"` |  |
 | server.dataStorage.annotations | object | `{}` |  |
-| server.dataStorage.enabled | bool | `true` |  |
 | server.dataStorage.labels | object | `{}` |  |
 | server.dataStorage.mountPath | string | `"/openbao/data"` |  |
-| server.dataStorage.size | string | `"10Gi"` |  |
+| server.dataStorage.size | string | `"10Gi"` | Size of the data PVC. Data persistence is mandatory for integrated Raft storage (standalone, HA raft, dev); the chart always creates this PVC and there is no `enabled` switch. |
 | server.dataStorage.storageClass | string | `nil` |  |
-| server.dev_mode.config | string | *(multi-line)* | HCL config for the persistent dev server (file storage backend on the data PVC). |
-| server.dev_mode.enabled | bool | `true` | Run OpenBao in persistent dev mode (file backend on the data PVC, auto-init and auto-unseal). Shipped default; development/testing only. |
+| server.dev_mode.config | string | *(multi-line)* | HCL config for the persistent dev server (single-node Raft on the data PVC). Currently not rendered: dev mode uses `server.standalone.config`. |
+| server.dev_mode.enabled | bool | `true` | Run OpenBao in persistent dev mode (single-node Raft on the data PVC, auto-init and auto-unseal). Shipped default; development/testing only. Mutually exclusive with `server.ha.enabled`; the chart fails to render if both are `true`. |
 | server.enabled | string | `"-"` |  |
 | server.extraArgs | string | `""` | extraArgs is a string containing additional OpenBao server arguments. |
 | server.extraContainers | string | `nil` |  |
@@ -72,7 +75,7 @@ Kubernetes: `>= 1.30.0-0`
 | server.gateway.httpRoute.matches.path.type | string | `"PathPrefix"` |  |
 | server.gateway.httpRoute.matches.path.value | string | `"/"` |  |
 | server.gateway.httpRoute.matches.timeouts | object | `{}` |  |
-| server.gateway.httpRoute.parentRefs | list | `[]` |  |
+| server.gateway.httpRoute.parentRefs | list | `[]` | Parent Gateways the HTTPRoute attaches to. Required when `server.gateway.httpRoute.enabled` is `true`; the chart fails to render if left empty while the route is enabled. |
 | server.gateway.tlsPolicy.activeService | bool | `true` |  |
 | server.gateway.tlsPolicy.annotations | object | `{}` |  |
 | server.gateway.tlsPolicy.apiVersion | string | `"gateway.networking.k8s.io/v1"` |  |
@@ -86,13 +89,13 @@ Kubernetes: `>= 1.30.0-0`
 | server.gateway.tlsRoute.enabled | bool | `false` |  |
 | server.gateway.tlsRoute.hosts | list | `[]` |  |
 | server.gateway.tlsRoute.labels | object | `{}` |  |
-| server.gateway.tlsRoute.parentRefs | list | `[]` |  |
+| server.gateway.tlsRoute.parentRefs | list | `[]` | Parent Gateways the TLSRoute attaches to. Required when `server.gateway.tlsRoute.enabled` is `true`; the chart fails to render if left empty while the route is enabled. |
 | server.ha.apiAddr | string | `nil` |  |
 | server.ha.clusterAddr | string | `nil` |  |
 | server.ha.config | string | `"ui = true\n\nlistener \"tcp\" {\n  tls_disable = 1\n  address = \"[::]:8200\"\n  cluster_address = \"[::]:8201\"\n}\nstorage \"consul\" {\n  path = \"openbao\"\n  address = \"HOST_IP:8500\"\n}\n\nservice_registration \"kubernetes\" {}\n\n# Example configuration for using auto-unseal, using Google Cloud KMS. The\n# GKMS keys must already exist, and the cluster must have a service account\n# that is authorized to access GCP KMS.\n#seal \"gcpckms\" {\n#   project     = \"openbao-helm-dev-246514\"\n#   region      = \"global\"\n#   key_ring    = \"openbao-helm-unseal-kr\"\n#   crypto_key  = \"openbao-helm-unseal-key\"\n#}\n\n# Example configuration for enabling Prometheus metrics.\n# If you are using Prometheus Operator you can enable a ServiceMonitor resource below.\n# You may wish to enable unauthenticated metrics in the listener block above.\n#telemetry {\n#  prometheus_retention_time = \"30s\"\n#  disable_hostname = true\n#}\n"` |  |
 | server.ha.disruptionBudget.enabled | bool | `true` |  |
 | server.ha.disruptionBudget.maxUnavailable | string | `nil` |  |
-| server.ha.enabled | bool | `false` |  |
+| server.ha.enabled | bool | `false` | Mutually exclusive with `server.dev_mode.enabled`; the chart fails to render if both are `true`. |
 | server.ha.raft.config | string | `"ui = true\n\nlistener \"tcp\" {\n  tls_disable = 1\n  address = \"[::]:8200\"\n  cluster_address = \"[::]:8201\"\n  # Enable unauthenticated metrics access (necessary for Prometheus Operator)\n  #telemetry {\n  #  unauthenticated_metrics_access = \"true\"\n  #}\n}\n\nstorage \"raft\" {\n  path = \"/openbao/data\"\n}\n\nservice_registration \"kubernetes\" {}\n"` |  |
 | server.ha.raft.enabled | bool | `false` |  |
 | server.ha.raft.setNodeId | bool | `false` |  |
@@ -100,8 +103,8 @@ Kubernetes: `>= 1.30.0-0`
 | server.hostAliases | list | `[]` |  |
 | server.hostNetwork | bool | `false` |  |
 | server.image.pullPolicy | string | `"IfNotPresent"` | image pull policy to use for server image. if tag is "latest", set to "Always" |
-| server.image.registry | string | `"quay.io"` | image registry to use for server image |
-| server.image.repository | string | `"openbao/openbao"` | image repo to use for server image |
+| server.image.registry | string | `"quay.io"` | Image registry for the server image. Prepended to `repository` to form the full reference `registry/repository:tag`; override for air-gapped / internal-mirror installs. |
+| server.image.repository | string | `"openbao/openbao"` | Image repository for the server image, WITHOUT the registry host (see `registry`). |
 | server.image.tag | string | `""` | image tag to use for server image - defaults to chart appVersion |
 | server.ingress.activeService | bool | `true` |  |
 | server.ingress.annotations | object | `{}` |  |
@@ -176,13 +179,14 @@ Kubernetes: `>= 1.30.0-0`
 | server.serviceAccount.name | string | `""` |  |
 | server.serviceAccount.serviceDiscovery.enabled | bool | `true` |  |
 | server.shareProcessNamespace | bool | `false` | shareProcessNamespace enables process namespace sharing between OpenBao and the extraContainers This is useful if OpenBao must be signaled, e.g. to send a SIGHUP for a log rotation |
-| server.standalone.config | string | (HCL) | Standalone server HCL config. The `listener "tcp"` block is templated: it renders `tls_disable = 1` when `global.tlsDisable=true`, otherwise `tls_cert_file`/`tls_key_file`/`tls_min_version` (and `tls_cipher_suites` when set) from `server.tls.*`. |
-| server.standalone.enabled | string | `"-"` |  |
+| server.standalone.config | string | (HCL) | Standalone server HCL config. Uses single-node integrated storage: `storage "raft" { path = "<server.dataStorage.mountPath>" }` with no `retry_join`; the node ID is the pod name (`BAO_RAFT_NODE_ID`). The `listener "tcp"` block is templated: it renders `tls_disable = 1` when `global.tlsDisable=true`, otherwise `tls_cert_file`/`tls_key_file`/`tls_min_version` (and `tls_cipher_suites` when set) from `server.tls.*`. |
+| server.standalone.enabled | string | `"-"` | Standalone mode: one replica, one-node Raft cluster. Supports Raft snapshots and the snapshot agent; can be moved in place to HA Raft. |
+| server.standalone.legacyFileDataCheck | bool | `true` | Refuse to start when `server.dataStorage.mountPath` holds data of the legacy `file` backend (`core/` without `vault.db`). Migrate with `bao operator migrate` first (docs/chart/09-deployment-modes.md §8.5). |
 | server.statefulSet.annotations | object | `{}` |  |
 | server.statefulSet.securityContext.container | object | `{}` |  |
 | server.statefulSet.securityContext.pod | object | `{}` |  |
 | server.terminationGracePeriodSeconds | int | `10` |  |
-| server.tls.source | string | `"certManager"` | How the server TLS certificate is provisioned: `certManager`, `rawCerts` or `existingSecret`. Only effective when `global.tlsDisable=false`. |
+| server.tls.source | string | `"certManager"` | How the server TLS certificate is provisioned: `certManager`, `rawCerts` or `existingSecret`. Only effective when `global.tlsDisable=false`. `rawCerts` requires `server.tls.certs.crt`/`key`; `existingSecret` requires `server.tls.secretName`; supplying TLS material while `global.tlsDisable=true` fails rendering. |
 | server.tls.secretName | string | `""` | Name of the kubernetes.io/tls secret with the server cert. Defaults to `<fullname>-tls`. |
 | server.tls.certs.crt | string | `""` | Inline PEM certificate (source=rawCerts). |
 | server.tls.certs.key | string | `""` | Inline PEM private key (source=rawCerts). |

@@ -1,0 +1,70 @@
+# yaml-language-server: $schema=../../charts/openbao/values.schema.json
+#
+# Overlay: OpenShift with a passthrough Route
+# ===========================================
+#
+# Apply after the chart's OpenShift defaults and a base example:
+#
+#   helm upgrade --install openbao ./charts/openbao -n openbao \
+#     -f charts/openbao/values.openshift.yaml \
+#     -f examples/ha-raft.yaml \
+#     -f examples/overlays/openshift-route.yaml
+#
+# values.openshift.yaml sets global.openshift=true (no security context: the
+# restricted-v2 SCC assigns UID/GID), the UBI image, and an HTTP readiness
+# probe that treats uninitialized servers as ready.
+#
+# Passthrough: the router forwards TLS, OpenBao terminates it. TLS
+# certificate authentication works. The server certificate must contain the
+# Route host (see extraSans below).
+#
+# Check:
+#   oc -n openbao get route openbao
+#   curl --cacert ca.crt https://openbao.apps.example.com/v1/sys/health
+#
+# Docs: docs/chart/12-advanced.md#5-openshift
+
+global:
+  openshift: true
+  tlsDisable: false          # passthrough needs TLS on the pod
+
+server:
+  route:
+    enabled: true
+    host: openbao.apps.example.com
+    # In HA, target openbao-active so requests reach the leader directly.
+    activeService: true
+    tls:
+      termination: passthrough
+      # Redirect plain HTTP to HTTPS at the router.
+      insecureEdgeTerminationPolicy: Redirect
+
+  # Do not create an Ingress on OpenShift; the chart renders it if enabled.
+  ingress:
+    enabled: false
+
+  tls:
+    certManager:
+      extraSans:
+        - openbao.apps.example.com
+
+  # OpenShift assigns UID/GID. A non-empty securityContext from the base
+  # example would set capabilities only, which restricted-v2 accepts, but
+  # never set runAsUser/runAsGroup/fsGroup here.
+  statefulSet:
+    securityContext:
+      pod: {}
+      container:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+
+  # The overlay image (registry.connect.redhat.com/openbao/openbao-ubi) keeps
+  # the tag from server.image.tag. Check the tag exists in that registry, and
+  # add a Red Hat pull secret if required:
+  # image:
+  #   tag: "2.6.2"
+
+# global:
+#   imagePullSecrets:
+#     - redhat-registry

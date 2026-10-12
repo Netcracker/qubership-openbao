@@ -1,4 +1,6 @@
 server:
+  dev_mode:
+    enabled: false
   ha:
     enabled: true
     replicas: 3

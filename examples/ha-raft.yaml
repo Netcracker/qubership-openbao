@@ -1,55 +1,207 @@
-# Example values: HA mode with integrated Raft storage (recommended for production).
-# Multi-replica cluster; servers start sealed and must be initialized/unsealed.
+# yaml-language-server: $schema=../charts/openbao/values.schema.json
+#
+# Example: HA with integrated Raft storage (recommended for production)
+# ====================================================================
+#
+# What you get:
+#   * 3 OpenBao servers (StatefulSet `openbao`), each with its own data PVC;
+#   * integrated Raft storage, automatic leader election, quorum of 2;
+#   * Services openbao, openbao-internal (headless), openbao-active,
+#     openbao-standby; a PodDisruptionBudget; RBAC for service registration;
+#   * end-to-end TLS with a cert-manager certificate;
+#   * Prometheus telemetry enabled in the server config (scraping is enabled
+#     by the overlay examples/overlays/monitoring.yaml).
+#
+# Prerequisites:
+#   * at least 3 schedulable nodes (required pod anti-affinity per node);
+#   * cert-manager;
+#   * a StorageClass backed by SSDs (Raft is latency sensitive).
 #
 # Install:
-#   helm install openbao ./charts/openbao -n openbao --create-namespace -f examples/ha-raft.yaml
+#   helm upgrade --install openbao ./charts/openbao \
+#     -n openbao --create-namespace -f examples/ha-raft.yaml
 #
-# After install, initialize the leader and join/unseal the remaining replicas:
-#   kubectl exec -n openbao openbao-0 -- bao operator init
-#   kubectl exec -n openbao openbao-0 -- bao operator unseal <key-share>
+# First start (manual Shamir unseal):
+#   examples/scripts/init-unseal.sh -n openbao -r openbao -p 3
+# The script initializes openbao-0, unseals it, waits for openbao-1 and -2 to
+# join through retry_join, and unseals them.
+#
+# Check the cluster:
+#   kubectl -n openbao exec -it openbao-0 -- bao login
+#   kubectl -n openbao exec openbao-0 -- bao operator raft list-peers
+#
+# Rolling restarts and upgrades (updateStrategyType: OnDelete):
+#   restart standbys one by one, unseal each, then
+#   `bao operator step-down` on the leader and restart it last.
+#   See docs/chart/09-deployment-modes.md#46-operations.
+#
+# Docs: docs/chart/09-deployment-modes.md#4-ha-with-integrated-raft
 
 global:
   tlsDisable: false
 
 server:
   dev_mode:
+    # Must be false: dev mode and HA are mutually exclusive (render fails).
     enabled: false
 
   ha:
     enabled: true
+    # Use an odd number: 3 tolerates 1 failure, 5 tolerates 2.
     replicas: 3
+
     raft:
       enabled: true
+      # Node IDs = pod names (openbao-0, ...). Makes list-peers readable.
+      # Decide before the first start; do not change it on a running cluster.
+      setNodeId: true
+
+      # Replaces the chart default, which hard-codes 3 retry_join blocks and
+      # sets no CA for joining over HTTPS. This version:
+      #   * generates one retry_join per replica from server.ha.replicas;
+      #   * verifies the leader with the CA from the chart TLS Secret;
+      #   * keeps the TLS on/off switch of the default config;
+      #   * enables Prometheus metrics.
+      # Everything between {{ }} is rendered by Helm (`tpl`) at install time.
+      config: |
+        ui = true
+        {{- $fn     := include "openbao.fullname" . }}
+        {{- $scheme := include "openbao.scheme" . }}
+        {{- $tls    := .Values.server.tls }}
+
+        listener "tcp" {
+          address         = "[::]:8200"
+          cluster_address = "[::]:8201"
+          {{- if .Values.global.tlsDisable }}
+          tls_disable = 1
+          {{- else }}
+          tls_cert_file   = "{{ $tls.mountPath }}/{{ $tls.certKey }}"
+          tls_key_file    = "{{ $tls.mountPath }}/{{ $tls.keyKey }}"
+          tls_min_version = "{{ $tls.tlsMinVersion }}"
+          {{- end }}
+
+          # Prometheus scrapes /v1/sys/metrics without a token.
+          # Remove this block and use serverTelemetry.serviceMonitor.authorization
+          # if metrics must be authenticated.
+          telemetry {
+            unauthenticated_metrics_access = "true"
+          }
+        }
+
+        storage "raft" {
+          path = "{{ .Values.server.dataStorage.mountPath }}"
+
+          # 1 = production timing (faster leader failure detection).
+          performance_multiplier = 1
+
+          {{- range $i := until (int .Values.server.ha.replicas) }}
+          retry_join {
+            leader_api_addr = "{{ $scheme }}://{{ $fn }}-{{ $i }}.{{ $fn }}-internal:8200"
+            {{- if not $.Values.global.tlsDisable }}
+            leader_ca_cert_file = "{{ $tls.mountPath }}/{{ $tls.caKey }}"
+            {{- end }}
+          }
+          {{- end }}
+        }
+
+        # Labels each pod with openbao-active=true/false, which the
+        # openbao-active and openbao-standby Services select on.
+        service_registration "kubernetes" {}
+
+        telemetry {
+          prometheus_retention_time = "60s"
+          disable_hostname          = true
+        }
+
+        # Auto-unseal (optional). Uncomment one seal stanza and provide its
+        # credentials, then you can switch updateStrategyType to RollingUpdate.
+        # See docs/chart/12-advanced.md#2-auto-unseal.
+        #
+        # seal "transit" {
+        #   address    = "TRANSIT_ADDR"            # from server.extraEnvironmentVars
+        #   key_name   = "openbao-autounseal"
+        #   mount_path = "transit/"
+        # }
+
     disruptionBudget:
       enabled: true
+      # Explicit value. With 3 replicas the computed default is also 1.
+      # Note: 0 is treated as "unset" by the chart.
       maxUnavailable: 1
 
-  dataStorage:
-    enabled: true
-    size: 10Gi
+  # Start all pods at once. Without auto-unseal this lets you unseal them in
+  # any order once openbao-0 is initialized. The default OrderedReady creates
+  # openbao-1 only after openbao-0 is Ready (unsealed).
+  # This field is immutable: decide before the first install.
+  podManagementPolicy: Parallel
 
-  resources:
-    requests:
-      memory: 512Mi
-      cpu: 500m
-    limits:
-      memory: 512Mi
-      cpu: 500m
+  # Keep OnDelete with manual unseal, so you control the restart order.
+  updateStrategyType: OnDelete
 
-  # End-to-end TLS via cert-manager. In HA, the certificate SANs cover the
-  # headless -internal service, per-pod wildcard DNS and the active/standby
-  # services automatically.
   tls:
     source: certManager
     tlsMinVersion: tls12
     certManager:
+      # Self-signed for the example. Use clusterIssuerName for production;
+      # with generateIssuer every renewal creates a new self-signed CA.
       generateIssuer: true
-      durationDays: 365
-      renewBefore: 720h
+      # clusterIssuerName: corp-ca
+      duration: 2160h     # 90 days
+      renewBefore: 360h   # 15 days
+      extraSans: []
+      # - openbao.example.com     # external name for passthrough exposure
+
+  dataStorage:
+    size: 10Gi
+    # storageClass: premium-ssd
+  auditStorage:
+    enabled: true
+    size: 10Gi
+
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain   # remove Raft peers before scaling down
+
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  # Spread replicas across zones in addition to the default per-node
+  # anti-affinity. Remove on single-zone clusters (DoNotSchedule would block).
+  topologySpreadConstraints: |
+    - maxSkew: 1
+      topologyKey: topology.kubernetes.io/zone
+      whenUnsatisfiable: ScheduleAnyway
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/name: {{ template "openbao.name" . }}
+          app.kubernetes.io/instance: "{{ .Release.Name }}"
+          component: server
+
+  logLevel: info
+  logFormat: json
+  preStopSleepSeconds: 5
+  terminationGracePeriodSeconds: 30
+  configAnnotation: true
+
+  statefulSet:
+    securityContext:
+      container:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
 
 ui:
   enabled: true
+  # In HA, send UI traffic only to the leader.
+  activeOpenbaoPodOnly: true
+  serviceType: ClusterIP
 
 serverTelemetry:
   serviceMonitor:
+    # Enable with examples/overlays/monitoring.yaml (needs Prometheus Operator CRDs).
     enabled: false

@@ -6,11 +6,13 @@ You can deploy OpenBao in one of the following topologies (the mode is derived
 from the switches described in [architecture.md](/docs/architecture.md#deployment-modes)):
 
 - **Dev mode** (`server.dev_mode.enabled: true`, the shipped default) – a
-  persistent development server. It uses the `file` storage backend on the data
-  PVC (`server.dataStorage`), so data survives restarts, and is auto-initialized
-  and auto-unsealed. Development/testing only.
+  persistent development server. It uses single-node integrated Raft storage
+  on the data PVC (`server.dataStorage`), so data survives restarts, and is
+  auto-initialized and auto-unsealed. Development/testing only.
 - **Standalone mode** (`server.standalone.enabled: "-"`) – a single-replica
-  server using the `file` storage backend on a PVC. Not highly available.
+  server running a one-node integrated storage (Raft consensus) cluster on a
+  PVC. Supports online Raft snapshots and can be grown in place into HA Raft.
+  Not highly available.
 - **HA mode with integrated Raft** (`server.ha.enabled: true` +
   `server.ha.raft.enabled: true`) – a multi-replica cluster that stores data in
   integrated Raft storage. Recommended for production.
@@ -32,15 +34,17 @@ Depending on the selected mode, the chart deploys some of the following:
 - Optional UI Service, Ingress / OpenShift Route / Gateway API routes.
 - Optional TLS resources (cert-manager `Certificate`/`Issuer` or a TLS secret).
 - Optional observability (ServiceMonitor, PrometheusRule, Grafana dashboard).
-- Optional snapshot agent CronJob for periodic Raft backups.
+- Optional snapshot agent CronJob for periodic Raft backups (HA Raft and
+  standalone).
 
 ## Prerequisites
 
 - **Kubernetes** >= `1.30.0` (see `charts/openbao/Chart.yaml`).
 - **Helm** >= `3.x`.
-- **StorageClass** – required for the `file` (standalone) and `raft` (HA)
-  backends. `server.dataStorage` defaults to `10Gi`, `ReadWriteOnce`, mounted at
-  `/openbao/data`.
+- **StorageClass** – required for the integrated Raft storage used by
+  standalone, dev and HA Raft. `server.dataStorage` defaults to `10Gi`,
+  `ReadWriteOnce`, mounted at `/openbao/data`. Prefer SSD-backed storage: Raft
+  calls `fsync` on every write.
 - **cert-manager** – required only when TLS is enabled with
   `server.tls.source: certManager`.
 - **Gateway API CRDs** – `TLSRoute` (`gateway.networking.k8s.io/v1alpha3`),
@@ -63,11 +67,17 @@ helm install openbao ./charts/openbao -n openbao --create-namespace
 ```
 
 ```bash
-# Standalone (file backend, single replica)
+# Standalone (single-node integrated Raft, single replica)
 helm install openbao ./charts/openbao -n openbao --create-namespace \
   --set server.dev_mode.enabled=false \
   --set server.standalone.enabled=true
 ```
+
+> **Upgrading from a chart version whose standalone used the `file` backend:**
+> the server refuses to start on a volume with `file` data
+> (`server.standalone.legacyFileDataCheck`). Migrate once with
+> `bao operator migrate`, see
+> [09-deployment-modes.md §8.5](/docs/chart/09-deployment-modes.md#85-migrating-a-file-backed-standalone-to-raft).
 
 ```bash
 # HA with integrated Raft (recommended for production)
@@ -97,8 +107,9 @@ Ready-made value files for the common topologies are provided under
 
 ## Initialization and unseal
 
-- **Dev mode** requires no manual action. The server uses the `file` backend on
-  the data PVC and therefore starts sealed, but a `postStart` bootstrap
+- **Dev mode** requires no manual action. The server uses single-node Raft
+  storage on the data PVC and therefore starts sealed, but a `postStart`
+  bootstrap
   automatically initializes it on first boot and auto-unseals it on every
   (re)start. The generated unseal key and root token are persisted on the data
   volume (`<mountPath>/bootstrap-keys.json`). Because data is on a PVC, secrets
@@ -110,6 +121,13 @@ Ready-made value files for the common topologies are provided under
   kubectl exec -n openbao openbao-0 -- bao operator init
   kubectl exec -n openbao openbao-0 -- bao operator unseal <key-share>
   # In HA, join and unseal the remaining replicas as needed.
+  ```
+
+  In standalone the unsealed server is the leader of a one-node Raft cluster:
+
+  ```bash
+  kubectl exec -n openbao openbao-0 -- bao operator raft list-peers
+  kubectl exec -n openbao openbao-0 -- bao operator raft snapshot save /tmp/bao.snap
   ```
 ### Very important save this seal tokens and root tocket to security space!
 
@@ -248,8 +266,8 @@ Resource requests/limits are set via `server.resources`; storage size via
 
 ## Storage
 
-- **Data** – `server.dataStorage` creates the PVC used by the `file`
-  (standalone) and `raft` (HA) backends. Defaults: `10Gi`, `ReadWriteOnce`,
+- **Data** – `server.dataStorage` creates the PVC used by integrated Raft
+  storage (standalone, dev and HA Raft). Defaults: `10Gi`, `ReadWriteOnce`,
   mounted at `/openbao/data`. Set `server.dataStorage.storageClass` to pin a
   StorageClass.
 - **Audit** – `server.auditStorage` (disabled by default) creates a PVC mounted

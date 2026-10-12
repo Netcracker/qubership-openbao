@@ -17,8 +17,8 @@ the most commonly used parameters.
 | `global.openshift` | Deploy to OpenShift (use `server.route` for exposure) | `false` |
 | `global.serverTelemetry.prometheusOperator` | Enable Prometheus Operator integration | `false` |
 | `server.enabled` | Install the OpenBao server (`"-"` follows `global.enabled`) | `"-"` |
-| `server.image.registry` | Server image registry | `"quay.io"` |
-| `server.image.repository` | Server image repository | `"quay.io/openbao/openbao"` |
+| `server.image.registry` | Server image registry, prepended to `repository` (`registry/repository:tag`); override for air-gapped mirrors | `"quay.io"` |
+| `server.image.repository` | Server image repository, without the registry host | `"openbao/openbao"` |
 | `server.image.tag` | Server image tag | `"2.5"` |
 | `server.image.pullPolicy` | Server image pull policy | `IfNotPresent` |
 | `server.updateStrategyType` | StatefulSet update strategy | `"OnDelete"` |
@@ -41,15 +41,16 @@ the most commonly used parameters.
 | `server.tls.certManager.clusterIssuerName` | Use an existing ClusterIssuer | `""` |
 | `server.service.enabled` | Create the client Service | `true` |
 | `server.service.port` | Client Service port | `8200` |
-| `server.dataStorage.enabled` | Create the data PVC (file/raft backends) | `true` |
-| `server.dataStorage.size` | Data PVC size | `10Gi` |
+| `server.dataStorage.size` | Data PVC size (PVC always created for file/raft backends; persistence is mandatory) | `10Gi` |
 | `server.dataStorage.mountPath` | Data mount path | `/openbao/data` |
 | `server.dataStorage.storageClass` | Data PVC StorageClass (null = default) | `null` |
 | `server.auditStorage.enabled` | Create the audit-log PVC | `false` |
 | `server.auditStorage.size` | Audit PVC size | `10Gi` |
-| `server.dev_mode.enabled` | Run in persistent dev mode (file backend on the data PVC, auto-init/auto-unseal) — shipped default | `true` |
-| `server.dev_mode.config` | HCL config for the persistent dev server (file backend) | *(multi-line)* |
-| `server.standalone.enabled` | Run in standalone mode (file backend) | `"-"` |
+| `server.dev_mode.enabled` | Run in persistent dev mode (single-node Raft on the data PVC, auto-init/auto-unseal) — shipped default | `true` |
+| `server.dev_mode.config` | HCL config for the persistent dev server (not rendered, see known issue #1; dev uses `server.standalone.config`) | *(multi-line)* |
+| `server.standalone.enabled` | Run in standalone mode (single-node integrated Raft storage) | `"-"` |
+| `server.standalone.config` | Standalone HCL; default is a TLS-aware listener plus `storage "raft" { path = <dataStorage.mountPath> }` | *(multi-line)* |
+| `server.standalone.legacyFileDataCheck` | Refuse to start when the data volume still holds legacy `file` backend data | `true` |
 | `server.ha.enabled` | Run in HA mode | `false` |
 | `server.ha.replicas` | HA replica count | `3` |
 | `server.ha.raft.enabled` | Use integrated Raft storage in HA | `false` |

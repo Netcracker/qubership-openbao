@@ -2,6 +2,18 @@
     "$schema": "http://json-schema.org/schema#",
     "type": "object",
     "properties": {
+        "SERVICE_NAME": {
+            "type": "string"
+        },
+        "APPLICATION_NAME": {
+            "type": "string"
+        },
+        "MANAGED_BY": {
+            "type": "string"
+        },
+        "DEPLOYMENT_SESSION_ID": {
+            "type": "string"
+        },
         "extraObjects": {
             "type": "array"
         },
@@ -43,10 +55,10 @@
             "type": "object",
             "properties": {
                 "affinity": {
-                    "type": "string"
+                    "type": ["object", "string"]
                 },
                 "annotations": {
-                    "type": "object"
+                    "type": ["object", "string"]
                 },
                 "auditStorage": {
                     "type": "object",
@@ -55,13 +67,13 @@
                             "type": "string"
                         },
                         "annotations": {
-                            "type": "object"
+                            "type": ["object", "string"]
                         },
                         "enabled": {
-                            "type": "boolean"
+                            "type": ["boolean", "string"]
                         },
                         "labels": {
-                            "type": "object"
+                            "type": ["object", "string"]
                         },
                         "mountPath": {
                             "type": "string"
@@ -92,13 +104,10 @@
                             "type": "string"
                         },
                         "annotations": {
-                            "type": "object"
-                        },
-                        "enabled": {
-                            "type": "boolean"
+                            "type": ["object", "string"]
                         },
                         "labels": {
-                            "type": "object"
+                            "type": ["object", "string"]
                         },
                         "mountPath": {
                             "type": "string"
@@ -123,25 +132,25 @@
                     }
                 },
                 "enabled": {
-                    "type": "string"
+                    "type": ["boolean", "string"]
                 },
                 "extraArgs": {
                     "type": "string"
                 },
                 "extraContainers": {
-                    "type": "null"
+                    "type": ["null", "array"]
                 },
                 "extraEnvironmentVars": {
                     "type": "object"
                 },
                 "extraInitContainers": {
-                    "type": "array"
+                    "type": ["null", "array"]
                 },
                 "extraLabels": {
                     "type": "object"
                 },
                 "extraPorts": {
-                    "type": "array"
+                    "type": ["null", "array"]
                 },
                 "extraSecretEnvironmentVars": {
                     "type": "array"
@@ -159,7 +168,7 @@
                                     "type": "boolean"
                                 },
                                 "annotations": {
-                                    "type": "object"
+                                    "type": ["object", "string"]
                                 },
                                 "apiVersion": {
                                     "type": "string"
@@ -210,7 +219,7 @@
                                     "type": "boolean"
                                 },
                                 "annotations": {
-                                    "type": "object"
+                                    "type": ["object", "string"]
                                 },
                                 "apiVersion": {
                                     "type": "string"
@@ -236,7 +245,7 @@
                                     "type": "boolean"
                                 },
                                 "annotations": {
-                                    "type": "object"
+                                    "type": ["object", "string"]
                                 },
                                 "apiVersion": {
                                     "type": "string"
@@ -261,13 +270,13 @@
                     "type": "object",
                     "properties": {
                         "apiAddr": {
-                            "type": "null"
+                            "type": ["null", "string"]
                         },
                         "clusterAddr": {
-                            "type": "null"
+                            "type": ["null", "string"]
                         },
                         "config": {
-                            "type": "string"
+                            "type": ["string", "object"]
                         },
                         "disruptionBudget": {
                             "type": "object",
@@ -276,7 +285,7 @@
                                     "type": "boolean"
                                 },
                                 "maxUnavailable": {
-                                    "type": "integer"
+                                    "type": ["null", "integer"]
                                 }
                             }
                         },
@@ -287,7 +296,7 @@
                             "type": "object",
                             "properties": {
                                 "config": {
-                                    "type": "string"
+                                    "type": ["string", "object"]
                                 },
                                 "enabled": {
                                     "type": "boolean"
@@ -311,6 +320,9 @@
                 "image": {
                     "type": "object",
                     "properties": {
+                        "registry": {
+                            "type": "string"
+                        },
                         "pullPolicy": {
                             "type": "string"
                         },
@@ -329,7 +341,7 @@
                             "type": "boolean"
                         },
                         "annotations": {
-                            "type": "object"
+                            "type": ["object", "string"]
                         },
                         "enabled": {
                             "type": "boolean"
@@ -448,7 +460,7 @@
                     }
                 },
                 "nodeSelector": {
-                    "type": "object"
+                    "type": ["null", "object", "string"]
                 },
                 "persistentVolumeClaimRetentionPolicy": {
                     "type": "object"
@@ -501,7 +513,7 @@
                             "type": "boolean"
                         },
                         "annotations": {
-                            "type": "object"
+                            "type": ["object", "string"]
                         },
                         "enabled": {
                             "type": "boolean"
@@ -524,6 +536,43 @@
                 },
                 "tls": {
                     "type": "object",
+                    "allOf": [
+                        {
+                            "if": {
+                                "properties": {
+                                    "source": { "const": "rawCerts" }
+                                },
+                                "required": ["source"]
+                            },
+                            "then": {
+                                "properties": {
+                                    "certs": {
+                                        "type": "object",
+                                        "properties": {
+                                            "crt": { "type": "string", "minLength": 1 },
+                                            "key": { "type": "string", "minLength": 1 }
+                                        },
+                                        "required": ["crt", "key"]
+                                    }
+                                },
+                                "required": ["certs"]
+                            }
+                        },
+                        {
+                            "if": {
+                                "properties": {
+                                    "source": { "const": "existingSecret" }
+                                },
+                                "required": ["source"]
+                            },
+                            "then": {
+                                "properties": {
+                                    "secretName": { "type": "string", "minLength": 1 }
+                                },
+                                "required": ["secretName"]
+                            }
+                        }
+                    ],
                     "properties": {
                         "source": {
                             "type": "string",
@@ -627,7 +676,7 @@
                             "type": "object",
                             "properties": {
                                 "annotations": {
-                                    "type": "object"
+                                    "type": ["object", "string"]
                                 },
                                 "enabled": {
                                     "type": "boolean"
@@ -638,7 +687,7 @@
                             }
                         },
                         "annotations": {
-                            "type": "object"
+                            "type": ["object", "string"]
                         },
                         "enabled": {
                             "type": "boolean"
@@ -656,7 +705,7 @@
                             "type": "object",
                             "properties": {
                                 "annotations": {
-                                    "type": "object"
+                                    "type": ["object", "string"]
                                 }
                             }
                         },
@@ -684,7 +733,7 @@
                             "type": "object",
                             "properties": {
                                 "annotations": {
-                                    "type": "object"
+                                    "type": ["object", "string"]
                                 },
                                 "enabled": {
                                     "type": "boolean"
@@ -703,7 +752,7 @@
                     "type": "object",
                     "properties": {
                         "annotations": {
-                            "type": "object"
+                            "type": ["object", "string"]
                         },
                         "create": {
                             "type": "boolean"
@@ -734,10 +783,13 @@
                     "type": "object",
                     "properties": {
                         "config": {
-                            "type": "string"
+                            "type": ["string", "object"]
                         },
                         "enabled": {
-                            "type": "string"
+                            "type": ["string", "boolean"]
+                        },
+                        "legacyFileDataCheck": {
+                            "type": ["boolean", "string"]
                         }
                     }
                 },
@@ -745,16 +797,16 @@
                     "type": "object",
                     "properties": {
                         "annotations": {
-                            "type": "object"
+                            "type": ["object", "string"]
                         },
                         "securityContext": {
                             "type": "object",
                             "properties": {
                                 "container": {
-                                    "type": "object"
+                                    "type": ["object", "string"]
                                 },
                                 "pod": {
-                                    "type": "object"
+                                    "type": ["object", "string"]
                                 }
                             }
                         }
@@ -764,10 +816,10 @@
                     "type": "integer"
                 },
                 "tolerations": {
-                    "type": "array"
+                    "type": ["null", "array", "string"]
                 },
                 "topologySpreadConstraints": {
-                    "type": "array"
+                    "type": ["null", "array", "string"]
                 },
                 "updateStrategyType": {
                     "type": "string"
@@ -858,7 +910,7 @@
             "type": "object",
             "properties": {
                 "annotations": {
-                    "type": "object"
+                    "type": ["object", "string"]
                 },
                 "config": {
                     "type": "object",
@@ -928,10 +980,10 @@
                     "type": "object",
                     "properties": {
                         "container": {
-                            "type": "object"
+                            "type": ["object", "string"]
                         },
                         "pod": {
-                            "type": "object"
+                            "type": ["object", "string"]
                         }
                     }
                 },
@@ -939,7 +991,7 @@
                     "type": "object",
                     "properties": {
                         "annotations": {
-                            "type": "object"
+                            "type": ["object", "string"]
                         },
                         "create": {
                             "type": "boolean"
@@ -953,7 +1005,7 @@
                     }
                 },
                 "tolerations": {
-                    "type": "array"
+                    "type": ["null", "array", "string"]
                 }
             }
         },
@@ -964,10 +1016,10 @@
                     "type": "boolean"
                 },
                 "annotations": {
-                    "type": "object"
+                    "type": ["object", "string"]
                 },
                 "enabled": {
-                    "type": "boolean"
+                    "type": ["boolean", "string"]
                 },
                 "externalPort": {
                     "type": "integer"
@@ -988,7 +1040,7 @@
                     "type": "string"
                 },
                 "serviceNodePort": {
-                    "type": "null"
+                    "type": ["null", "integer"]
                 },
                 "serviceType": {
                     "type": "string"

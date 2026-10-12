@@ -179,6 +179,9 @@ template logic.
 */}}
 {{- define "openbao.mode" -}}
   {{- template "openbao.serverEnabled" . -}}
+  {{- if and (eq (.Values.server.dev_mode.enabled | toString) "true") (eq (.Values.server.ha.enabled | toString) "true") -}}
+    {{- fail "server.dev_mode.enabled and server.ha.enabled are mutually exclusive: dev mode is a single-replica persistent server and cannot run in HA. Disable one of them." -}}
+  {{- end -}}
   {{- if or (.Values.global.externalVaultAddr) (.Values.global.externalBaoAddr) -}}
     {{- $_ := set . "mode" "external" -}}
   {{- else if not .serverEnabled -}}
@@ -241,17 +244,6 @@ extra volumes the user may have specified (such as a secret with TLS).
           {{- end }}
             defaultMode: {{ .defaultMode | default 420 }}
   {{- end }}
-  {{- $devModeVolumeExists := false -}}
-  {{- range .Values.server.volumes }}
-    {{- if eq .name "static-key-volume" }}
-      {{- $devModeVolumeExists = true -}}
-    {{- end }}
-  {{- end }}
-  {{- if and (eq (.Values.server.dev_mode.enabled | toString) "true") (not $devModeVolumeExists) }}
-        - name: static-key-volume
-          secret:
-            secretName: bao-static-unseal-key
-  {{- end }}
   {{- if .Values.server.volumes }}
     {{- toYaml .Values.server.volumes | nindent 8}}
   {{- end }}
@@ -261,6 +253,14 @@ extra volumes the user may have specified (such as a secret with TLS).
 Set's the args for custom command to render the OpenBao configuration
 file with IP addresses to make the out of box experience easier
 for users looking to use this chart with Consul Helm.
+
+In standalone mode (single-node integrated Raft storage) a guard refuses to
+start the server when the data volume still holds data written by the legacy
+`file` storage backend (a `core/` directory without `vault.db`). Starting Raft
+on top of such a volume would present an EMPTY, uninitialized OpenBao while the
+old secrets sit untouched next to it. Migrate the data first with
+`bao operator migrate` (see docs/chart/09-deployment-modes.md), or set
+server.standalone.legacyFileDataCheck=false to bypass the guard.
 */}}
 {{- define "openbao.args" -}}
   {{ if or (eq .mode "standalone") (eq .mode "ha") (eq .mode "dev") }}
@@ -272,6 +272,15 @@ for users looking to use this chart with Consul Helm.
             [ -n "${API_ADDR}" ] && sed -Ei "s|API_ADDR|${API_ADDR?}|g" /tmp/storageconfig.hcl;
             [ -n "${TRANSIT_ADDR}" ] && sed -Ei "s|TRANSIT_ADDR|${TRANSIT_ADDR?}|g" /tmp/storageconfig.hcl;
             [ -n "${RAFT_ADDR}" ] && sed -Ei "s|RAFT_ADDR|${RAFT_ADDR?}|g" /tmp/storageconfig.hcl;
+            {{- if and (eq .mode "standalone") (ne (.Values.server.standalone.legacyFileDataCheck | toString) "false") }}
+            DATA_DIR="{{ .Values.server.dataStorage.mountPath }}";
+            if grep -Eq 'storage[[:space:]]*"raft"|"raft"[[:space:]]*:' /tmp/storageconfig.hcl && [ -d "${DATA_DIR}/core" ] && [ ! -f "${DATA_DIR}/vault.db" ]; then
+              echo "ERROR: ${DATA_DIR} contains data of the legacy 'file' storage backend, but standalone mode now uses integrated Raft storage." >&2;
+              echo "ERROR: Starting would expose an empty, uninitialized OpenBao. Migrate the data with 'bao operator migrate' (docs/chart/09-deployment-modes.md, 'Migrating a file-backed standalone to Raft')," >&2;
+              echo "ERROR: or set server.standalone.legacyFileDataCheck=false to start anyway." >&2;
+              exit 1;
+            fi;
+            {{- end }}
             /usr/local/bin/docker-entrypoint.sh bao server -config=/tmp/storageconfig.hcl {{ .Values.server.extraArgs }}
   {{ end }}
 {{- end -}}
@@ -292,10 +301,8 @@ based on the mode configured.
               mountPath: {{ .Values.server.auditStorage.mountPath }}
   {{ end }}
   {{ if or (eq .mode "standalone") (eq .mode "dev") (and (eq .mode "ha") (eq (.Values.server.ha.raft.enabled | toString) "true"))  }}
-    {{ if eq (.Values.server.dataStorage.enabled | toString) "true" }}
             - name: data
               mountPath: {{ .Values.server.dataStorage.mountPath }}
-    {{ end }}
   {{ end }}
   {{ if and (ne .mode "dev") (or (.Values.server.standalone.config)  (.Values.server.ha.config)) }}
             - name: config
@@ -315,31 +322,27 @@ based on the mode configured.
               readOnly: true
               mountPath: {{ .path | default "/openbao/userconfig" }}/{{ .name }}
   {{- end }}
-  {{- $devModeMountExists := false -}}
-  {{- range .Values.server.volumeMounts }}
-    {{- if eq .name "static-key-volume" }}
-      {{- $devModeMountExists = true -}}
-    {{- end }}
-  {{- end }}
-  {{- if and (eq (.Values.server.dev_mode.enabled | toString) "true") (not $devModeMountExists) }}
-            - name: static-key-volume
-              mountPath: /bao/secrets
-              readOnly: true
-  {{- end }}
   {{- if .Values.server.volumeMounts }}
     {{- toYaml .Values.server.volumeMounts | nindent 12}}
   {{- end }}
 {{- end -}}
 
 {{/*
-Set's up the volumeClaimTemplates when data or audit storage is required.  HA
-might not use data storage since Consul is likely it's backend, however, audit
-storage might be desired by the user.
+Set's up the volumeClaimTemplates when data or audit storage is required.
+
+Data storage is mandatory whenever the selected backend keeps its data on a
+local path: standalone (single-node integrated Raft), HA with integrated Raft,
+and the persistent dev mode (which runs on the standalone code path). For those
+modes the data PVC is always created — there is
+no opt-out — because dropping it silently sends the store to the container
+layer and loses all data on every restart. Audit storage remains opt-in via
+server.auditStorage.enabled.
 */}}
 {{- define "openbao.volumeclaims" -}}
-  {{- if and (ne .mode "dev") (or .Values.server.dataStorage.enabled .Values.server.auditStorage.enabled) }}
+  {{- $dataOnDisk := or (eq .mode "standalone") (and (eq .mode "ha") (eq (.Values.server.ha.raft.enabled | toString) "true")) -}}
+  {{- if and (ne .mode "dev") (or $dataOnDisk (eq (.Values.server.auditStorage.enabled | toString) "true")) }}
   volumeClaimTemplates:
-      {{- if and (eq (.Values.server.dataStorage.enabled | toString) "true") (or (eq .mode "standalone") (eq (.Values.server.ha.raft.enabled | toString ) "true" )) }}
+      {{- if $dataOnDisk }}
     - apiVersion: v1
       kind: PersistentVolumeClaim
       metadata:
@@ -373,7 +376,7 @@ storage might be desired by the user.
         storageClassName: {{ .Values.server.auditStorage.storageClass }}
           {{- end }}
       {{ end }}
-  {{- else if and (eq .mode "dev") (eq (.Values.server.dataStorage.enabled | toString) "true") }}
+  {{- else if eq .mode "dev" }}
   # Persistent dev mode: create the data PVC so file storage survives restarts.
   volumeClaimTemplates:
     - apiVersion: v1
@@ -891,8 +894,9 @@ Sets extra statefulset annotations
 Sets VolumeClaim annotations for data volume
 */}}
 {{- define "openbao.dataVolumeClaim.annotations" -}}
+  {{- $dataOnDisk := or (eq .mode "standalone") (and (eq .mode "ha") (eq (.Values.server.ha.raft.enabled | toString) "true")) -}}
   {{- $generic := .Values.server.dataStorage.annotations -}}
-  {{- if and (ne .mode "dev") (.Values.server.dataStorage.enabled) $generic }}
+  {{- if and (ne .mode "dev") $dataOnDisk $generic }}
   annotations:
     {{- include "openbao.annotations.render.4" (list . $generic) -}}
   {{- end }}
@@ -902,7 +906,8 @@ Sets VolumeClaim annotations for data volume
 Sets VolumeClaim labels for data volume
 */}}
 {{- define "openbao.dataVolumeClaim.labels" -}}
-  {{- if and (ne .mode "dev") (.Values.server.dataStorage.enabled) (.Values.server.dataStorage.labels) }}
+  {{- $dataOnDisk := or (eq .mode "standalone") (and (eq .mode "ha") (eq (.Values.server.ha.raft.enabled | toString) "true")) -}}
+  {{- if and (ne .mode "dev") $dataOnDisk (.Values.server.dataStorage.labels) }}
   labels:
     {{- $tp := typeOf .Values.server.dataStorage.labels }}
     {{- if eq $tp "string" }}
@@ -1189,6 +1194,43 @@ Used for BAO_CACERT, probes and in-cluster verification.
 */}}
 {{- define "openbao.tls.caCertPath" -}}
 {{- printf "%s/%s" .Values.server.tls.mountPath .Values.server.tls.caKey -}}
+{{- end -}}
+
+{{/*
+Validate the server TLS configuration and fail rendering with an explicit
+message on the silent-misconfiguration cases where the two TLS switches
+(global.tlsDisable and server.tls.*) disagree. Rendered for server modes only
+(callers guard on serverEnabled and non-external mode).
+
+Cases caught:
+  1. TLS is disabled (global.tlsDisable=true) but the operator supplied server
+     TLS material (server.tls.certs.crt/key/ca or a non-empty
+     server.tls.secretName). The material would be discarded silently and the
+     listener would run plain HTTP. -> tell them to set global.tlsDisable=false.
+  2. TLS is enabled (global.tlsDisable=false) with source=rawCerts but crt/key
+     are missing. The pod would mount a Secret that no template creates.
+  3. TLS is enabled with source=existingSecret but server.tls.secretName is
+     empty. The pod would mount the default <fullname>-tls Secret that no
+     template creates.
+*/}}
+{{- define "openbao.tls.validate" -}}
+{{- $tls := .Values.server.tls -}}
+{{- $material := or $tls.certs.crt $tls.certs.key $tls.certs.ca $tls.secretName -}}
+{{- if .Values.global.tlsDisable -}}
+  {{- if $material -}}
+    {{- fail "server.tls material is set (server.tls.certs.* or server.tls.secretName) but global.tlsDisable is true: the TLS material would be discarded and the listener would serve plain HTTP. Set global.tlsDisable=false to enable TLS, or clear server.tls material." -}}
+  {{- end -}}
+{{- else -}}
+  {{- if eq $tls.source "rawCerts" -}}
+    {{- if not (and $tls.certs.crt $tls.certs.key) -}}
+      {{- fail "server.tls.source=rawCerts with global.tlsDisable=false requires both server.tls.certs.crt and server.tls.certs.key to be set; otherwise the server pod mounts a TLS Secret that is never created." -}}
+    {{- end -}}
+  {{- else if eq $tls.source "existingSecret" -}}
+    {{- if not $tls.secretName -}}
+      {{- fail "server.tls.source=existingSecret with global.tlsDisable=false requires server.tls.secretName to name the pre-existing kubernetes.io/tls Secret; otherwise the server pod mounts a default <fullname>-tls Secret that is never created." -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
 {{- end -}}
 
 {{/*

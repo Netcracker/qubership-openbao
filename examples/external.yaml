@@ -1,0 +1,87 @@
+# yaml-language-server: $schema=../charts/openbao/values.schema.json
+#
+# Example: external mode (no OpenBao server in this release)
+# ==========================================================
+#
+# Use for: an OpenBao that runs elsewhere (other namespace, other cluster, VM)
+# needs, from THIS cluster:
+#   * a reviewer ServiceAccount with system:auth-delegator, so it can validate
+#     Kubernetes service account tokens (Kubernetes auth method);
+#   * optionally, the snapshot agent CronJob for scheduled Raft snapshots.
+#
+# Not rendered in this mode: StatefulSet, config ConfigMap, Services, PDB,
+# Ingress/Route/Gateway, TLS objects.
+#
+# Install:
+#   helm upgrade --install openbao ./charts/openbao \
+#     -n openbao --create-namespace -f examples/external.yaml
+#
+# Configure the external server (run with a token that can manage auth):
+#   NS=openbao
+#   TOKEN=$(kubectl -n "$NS" get secret openbao-token -o jsonpath='{.data.token}' | base64 -d)
+#   CA=$(kubectl -n "$NS" get secret openbao-token -o jsonpath='{.data.ca\.crt}' | base64 -d)
+#   bao auth enable -path=kubernetes-cluster-a kubernetes
+#   bao write auth/kubernetes-cluster-a/config \
+#     kubernetes_host="https://<api-server>:6443" \
+#     kubernetes_ca_cert="$CA" \
+#     token_reviewer_jwt="$TOKEN"
+#
+# Docs: docs/chart/09-deployment-modes.md#6-external-mode
+
+global:
+  # Setting this switches the chart to external mode.
+  externalBaoAddr: https://openbao.example.com:8200
+
+  # Keep true in external mode: with false the snapshot agent mounts the TLS
+  # Secret <fullname>-tls, which no template creates here, and its pods fail
+  # to start. The external server's CA is provided explicitly below.
+  tlsDisable: true
+
+server:
+  serviceAccount:
+    create: true
+    # Long-lived token Secret `openbao-token` for token_reviewer_jwt.
+    # Rotate it by deleting the Secret and running helm upgrade.
+    createSecret: true
+  authDelegator:
+    enabled: true
+
+# Optional: scheduled Raft snapshots of the EXTERNAL server.
+# Prepare the policy and role on that server first:
+#   examples/scripts/configure-snapshot-auth.sh --auth-path kubernetes-cluster-a \
+#     --namespace openbao --service-account openbao-snapshot
+snapshotAgent:
+  enabled: false
+  schedule: "0 */6 * * *"
+  s3CredentialsSecret: openbao-snapshot-s3
+  config:
+    s3Host: s3.eu-central-1.amazonaws.com
+    s3Bucket: acme-openbao-snapshots
+    s3Uri: s3://acme-openbao-snapshots/cluster-a/
+    s3ExpireDays: "30"
+    s3cmdExtraFlag: ""
+    baoAuthPath: kubernetes-cluster-a
+    baoRole: snapshot
+  # CA of the external server. Create it with:
+  #   kubectl -n openbao create configmap external-openbao-ca --from-file=ca.crt=./ca.crt
+  extraEnvironmentVars:
+    BAO_CACERT: /openbao/external-ca/ca.crt
+  extraVolumes:
+    - name: external-ca
+      configMap:
+        name: external-openbao-ca
+  extraVolumeMounts:
+    - name: external-ca
+      mountPath: /openbao/external-ca
+      readOnly: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+
+serverTelemetry:
+  serviceMonitor:
+    # Would find no Services in external mode.
+    enabled: false

@@ -1,0 +1,125 @@
+# yaml-language-server: $schema=../../charts/openbao/values.schema.json
+#
+# Overlay: Prometheus Operator monitoring
+# =======================================
+#
+# Apply on top of a base example whose server config contains BOTH:
+#   listener "tcp" { telemetry { unauthenticated_metrics_access = "true" } }
+#   telemetry { prometheus_retention_time = "60s"  disable_hostname = true }
+# examples/ha-raft.yaml and examples/ha-postgresql.yaml already do.
+# The chart's default configs only contain these blocks as comments.
+#
+#   helm upgrade --install openbao ./charts/openbao -n openbao \
+#     -f examples/ha-raft.yaml -f examples/overlays/monitoring.yaml
+#
+# Prerequisites: Prometheus Operator CRDs (kube-prometheus-stack). Without
+# them the install fails with `no matches for kind "ServiceMonitor"`.
+#
+# Notes:
+#   * In HA the ServiceMonitor selects the openbao-active Service, so only the
+#     leader is scraped. Alerts on sealed standbys need a second
+#     ServiceMonitor (docs/chart/10-observability.md#36-scraping-all-ha-nodes).
+#   * `selectors` REPLACES the default `release: prometheus` label. Set it to
+#     what your Prometheus serviceMonitorSelector / ruleSelector expects:
+#       kubectl get prometheus -A -o jsonpath='{..serviceMonitorSelector}'
+#   * Metric names keep the `vault_` prefix in OpenBao 2.x. Check them with
+#       curl -s 'http://127.0.0.1:8200/v1/sys/metrics?format=prometheus' | grep '^vault_core'
+#
+# Docs: docs/chart/10-observability.md
+
+serverTelemetry:
+  serviceMonitor:
+    enabled: true
+    selectors:
+      release: prometheus
+    interval: 30s
+    scrapeTimeout: 10s
+    # TLS: with global.tlsDisable=false and tlsConfig empty, the chart verifies
+    # the server against ca.crt from the chart TLS Secret (serverName
+    # <fullname>). Only set insecureSkipVerify if there is no ca.crt.
+    insecureSkipVerify: false
+
+  prometheusRules:
+    enabled: true
+    selectors:
+      release: prometheus
+    # Rendered with toYaml (not tpl), so Prometheus templates like
+    # {{ $labels.pod }} pass through unchanged.
+    rules:
+      - alert: OpenBaoTargetDown
+        expr: up{job=~".*openbao.*"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: OpenBao metrics endpoint is down
+          description: >-
+            Prometheus cannot scrape {{ $labels.instance }} in
+            {{ $labels.namespace }}. The server may be down, sealed or
+            without an elected leader.
+
+      - alert: OpenBaoSealed
+        expr: vault_core_unsealed == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: OpenBao is sealed
+          description: >-
+            {{ $labels.pod }} reports sealed. Requests fail until it is
+            unsealed.
+
+      - alert: OpenBaoHighRequestLatency
+        # vault_core_handle_request is a summary in milliseconds.
+        expr: vault_core_handle_request{quantile="0.5"} > 500
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: OpenBao median request latency is above 500ms
+
+      - alert: OpenBaoAuditLogFailures
+        expr: increase(vault_audit_log_request_failure[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: OpenBao cannot write audit logs
+          description: >-
+            When every audit device fails, OpenBao rejects all requests.
+            Check free space on the audit volume.
+
+      - alert: OpenBaoDataVolumeFilling
+        # Requires kubelet volume metrics (kube-prometheus-stack default).
+        expr: |
+          kubelet_volume_stats_available_bytes{persistentvolumeclaim=~"data-.*openbao.*"}
+            / kubelet_volume_stats_capacity_bytes{persistentvolumeclaim=~"data-.*openbao.*"}
+            < 0.15
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: >-
+            OpenBao data volume {{ $labels.persistentvolumeclaim }} is more
+            than 85% full
+
+      - alert: OpenBaoSnapshotJobFailed
+        # Requires kube-state-metrics. Harmless if the snapshot agent is off.
+        expr: kube_job_status_failed{job_name=~".*openbao-snapshot.*"} > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: OpenBao snapshot job {{ $labels.job_name }} failed
+
+  grafanaDashboard:
+    enabled: true
+    # Empty = chart namespace. Set to the namespace the Grafana sidecar watches
+    # if it does not search all namespaces.
+    namespace: ""
+    defaultLabel: true          # grafana_dashboard: "1"
+    # NOTE: the template reads `extraLabels` (plural). The `extraLabel` key in
+    # charts/openbao/values.yaml is ignored.
+    extraLabels: {}
+    extraAnnotations:
+      grafana_folder: Security

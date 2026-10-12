@@ -16,6 +16,7 @@ load _helpers
   local actual=$(helm template \
       --show-only templates/server-tlsroute.yaml  \
       --set 'server.gateway.tlsRoute.enabled=true' \
+      --set 'server.gateway.tlsRoute.parentRefs[0].name=my-gw' \
       --namespace foo \
       . | tee /dev/stderr |
       yq -r '.metadata.namespace' | tee /dev/stderr)
@@ -23,6 +24,7 @@ load _helpers
   local actual=$(helm template \
       --show-only templates/server-tlsroute.yaml  \
       --set 'server.gateway.tlsRoute.enabled=true' \
+      --set 'server.gateway.tlsRoute.parentRefs[0].name=my-gw' \
       --set 'global.namespace=bar' \
       --namespace foo \
       . | tee /dev/stderr |
@@ -35,6 +37,7 @@ load _helpers
   local actual=$( (helm template \
       --show-only templates/server-tlsroute.yaml  \
       --set 'server.gateway.tlsRoute.enabled=true' \
+      --set 'server.gateway.tlsRoute.parentRefs[0].name=my-gw' \
       --set 'global.externalVaultAddr=http://openbao-outside' \
       . || echo "---") | tee /dev/stderr |
       yq 'length > 0' | tee /dev/stderr)
@@ -46,6 +49,7 @@ load _helpers
   local actual=$(helm template \
       --show-only templates/server-tlsroute.yaml \
       --set 'server.gateway.tlsRoute.enabled=true' \
+      --set 'server.gateway.tlsRoute.parentRefs[0].name=my-gw' \
       --set 'server.gateway.tlsRoute.hosts[0]=test.com' \
       . | tee /dev/stderr |
       yq  -r '.spec.hostnames[0]' | tee /dev/stderr)
@@ -58,6 +62,7 @@ load _helpers
   local actual=$(helm template \
       --show-only templates/server-tlsroute.yaml \
       --set 'server.gateway.tlsRoute.enabled=true' \
+      --set 'server.gateway.tlsRoute.parentRefs[0].name=my-gw' \
       --set 'server.gateway.tlsRoute.hosts[0].host=test.com' \
       . | tee /dev/stderr |
       yq  -r '.spec.rules[0].backendRefs[0].name  | length > 0' | tee /dev/stderr)
@@ -71,6 +76,7 @@ load _helpers
   local actual=$(helm template \
       --show-only templates/server-tlsroute.yaml \
       --set 'server.gateway.tlsRoute.enabled=true' \
+      --set 'server.gateway.tlsRoute.parentRefs[0].name=my-gw' \
       --set 'server.gateway.tlsRoute.labels.traffic=external' \
       --set 'server.gateway.tlsRoute.labels.team=dev' \
       . | tee /dev/stderr |
@@ -84,6 +90,7 @@ load _helpers
   local actual=$(helm template \
       --show-only templates/server-tlsroute.yaml \
       --set 'server.gateway.tlsRoute.enabled=true' \
+      --set 'server.gateway.tlsRoute.parentRefs[0].name=my-gw' \
       --set 'server.gateway.tlsRoute.annotations=kubernetes.io/ingress.class: nginx' \
       . | tee /dev/stderr |
       yq -r '.metadata.annotations["kubernetes.io/ingress.class"]' | tee /dev/stderr)
@@ -96,6 +103,7 @@ load _helpers
   local actual=$(helm template \
       --show-only templates/server-tlsroute.yaml \
       --set 'server.gateway.tlsRoute.enabled=true' \
+      --set 'server.gateway.tlsRoute.parentRefs[0].name=my-gw' \
       --set server.gateway.tlsRoute.annotations."kubernetes\.io/ingress\.class"=nginx \
       . | tee /dev/stderr |
       yq -r '.metadata.annotations["kubernetes.io/ingress.class"]' | tee /dev/stderr)
@@ -108,6 +116,7 @@ load _helpers
   local actual=$(helm template \
       --show-only templates/server-tlsroute.yaml \
       --set 'server.gateway.tlsRoute.enabled=true' \
+      --set 'server.gateway.tlsRoute.parentRefs[0].name=my-gw' \
       --set 'server.dev.enabled=false' \
       --set 'server.ha.enabled=true' \
       --set 'server.service.enabled=true' \
@@ -122,6 +131,7 @@ load _helpers
   local actual=$(helm template \
       --show-only templates/server-tlsroute.yaml \
       --set 'server.gateway.tlsRoute.enabled=true' \
+      --set 'server.gateway.tlsRoute.parentRefs[0].name=my-gw' \
       --set 'server.gateway.tlsRoute.activeService=false' \
       --set 'server.dev.enabled=false' \
       --set 'server.ha.enabled=true' \
@@ -137,6 +147,7 @@ load _helpers
   local actual=$(helm template \
       --show-only templates/server-tlsroute.yaml \
       --set 'server.gateway.tlsRoute.enabled=true' \
+      --set 'server.gateway.tlsRoute.parentRefs[0].name=my-gw' \
       --set 'server.dev.enabled=false' \
       --set 'server.ha.enabled=false' \
       --set 'server.service.enabled=true' \
@@ -151,6 +162,7 @@ load _helpers
   local actual=$(helm template \
       --show-only templates/server-tlsroute.yaml \
       --set 'server.gateway.tlsRoute.enabled=true' \
+      --set 'server.gateway.tlsRoute.parentRefs[0].name=my-gw' \
       --set 'server.gateway.tlsRoute.activeService=true' \
       --set 'server.dev.enabled=false' \
       --set 'server.ha.enabled=false' \
@@ -158,4 +170,37 @@ load _helpers
       . | tee /dev/stderr |
       yq -r '.spec.rules[0].backendRefs[0].name' | tee /dev/stderr)
   [ "${actual}" = "release-name-openbao" ]
+}
+
+@test "server/gateway/tlsroute: parentRefs rendered as array (not null)" {
+  cd `chart_dir`
+
+  # Regression: previously spec.parentRefs was emitted as `null` when the
+  # value was the default empty list, breaking the Gateway route.
+  local actual=$(helm template \
+      --show-only templates/server-tlsroute.yaml \
+      --set 'server.gateway.tlsRoute.enabled=true' \
+      --set 'server.gateway.tlsRoute.parentRefs[0].name=my-gw' \
+      . | tee /dev/stderr |
+      yq -r '.spec.parentRefs | tag' | tee /dev/stderr)
+  [ "${actual}" = "!!seq" ]
+
+  local name=$(helm template \
+      --show-only templates/server-tlsroute.yaml \
+      --set 'server.gateway.tlsRoute.enabled=true' \
+      --set 'server.gateway.tlsRoute.parentRefs[0].name=my-gw' \
+      . | tee /dev/stderr |
+      yq -r '.spec.parentRefs[0].name' | tee /dev/stderr)
+  [ "${name}" = "my-gw" ]
+}
+
+@test "server/gateway/tlsroute: empty parentRefs with enabled fails" {
+  cd `chart_dir`
+
+  run helm template \
+      --show-only templates/server-tlsroute.yaml \
+      --set 'server.gateway.tlsRoute.enabled=true' \
+      .
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"parentRefs"* ]]
 }

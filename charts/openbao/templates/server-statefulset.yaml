@@ -79,7 +79,8 @@ spec:
       containers:
         - name: openbao
           {{ template "openbao.resources" . }}
-          image: "{{ template "find_image" (dict "deployName" "openbao" "SERVICE_NAME" "openbao" "vals" .Values "default" (printf "%s:%s" .Values.server.image.repository (tpl .Values.server.image.tag .))) }}"
+          image: "{{ template "find_image" (dict "deployName" "openbao" "SERVICE_NAME" "openbao" "vals" .Values "default" (printf "%s/%s:%s" .Values.server.image.registry .Values.server.image.repository (tpl .Values.server.image.tag .))) }}"
+          imagePullPolicy: {{ .Values.server.image.pullPolicy }}
           command:
           - "/bin/sh"
           - "-ec"
@@ -128,7 +129,10 @@ spec:
               {{- else }}
               value: "https://$(HOSTNAME).{{ template "openbao.fullname" . }}-internal:8201"
               {{- end }}
-            {{- if and (eq (.Values.server.ha.raft.enabled | toString) "true") (eq (.Values.server.ha.raft.setNodeId | toString) "true") }}
+            {{- if or (eq .mode "standalone") (and (eq (.Values.server.ha.raft.enabled | toString) "true") (eq (.Values.server.ha.raft.setNodeId | toString) "true")) }}
+            # Raft node ID pinned to the pod name. Always set in standalone
+            # (single-node Raft) so the ID stays stable across restarts and
+            # matches the IDs used after scaling out to HA Raft.
             - name: BAO_RAFT_NODE_ID
               valueFrom:
                 fieldRef:
@@ -218,10 +222,10 @@ spec:
                   "sleep {{ .Values.server.preStopSleepSeconds }} && kill -SIGTERM $(pidof bao)",
                 ]
             {{- if eq (.Values.server.dev_mode.enabled | toString) "true" }}
-            # Persistent dev mode: the server uses the file storage backend on
-            # the data PVC and therefore starts SEALED. This hook initializes it
-            # on first boot and auto-unseals it on every (re)start using unseal
-            # keys persisted on the data volume.
+            # Persistent dev mode: the server uses integrated Raft storage
+            # (single node) on the data PVC and therefore starts SEALED. This
+            # hook initializes it on first boot and auto-unseals it on every
+            # (re)start using unseal keys persisted on the data volume.
             postStart:
               exec:
                 command:

@@ -1,0 +1,94 @@
+# yaml-language-server: $schema=../../charts/openbao/values.schema.json
+#
+# Overlay: scheduled Raft snapshots to S3
+# =======================================
+#
+# Apply on top of examples/ha-raft.yaml or examples/standalone.yaml (the
+# snapshot API exists only for integrated Raft storage, which both use; it does
+# not work with PostgreSQL or a custom `file` config):
+#
+#   helm upgrade --install openbao ./charts/openbao -n openbao \
+#     -f examples/ha-raft.yaml -f examples/overlays/snapshot-s3.yaml
+#   # or: -f examples/standalone.yaml -f examples/overlays/snapshot-s3.yaml
+#
+# Before enabling (in this order):
+#   1. Configure Kubernetes auth, the `snapshot` policy and the role, bound to
+#      the ServiceAccount openbao-snapshot in namespace openbao:
+#        examples/scripts/configure-snapshot-auth.sh --namespace openbao
+#   2. Create the S3 credentials Secret. The CronJob reads EXACTLY these keys:
+#        kubectl -n openbao create secret generic openbao-snapshot-s3 \
+#          --from-literal=AWS_ACCESS_KEY_ID=<access-key> \
+#          --from-literal=AWS_SECRET_ACCESS_KEY=<secret-key>
+#   3. Create the bucket. Grant the S3 user only s3:PutObject, s3:GetObject,
+#      s3:ListBucket and s3:DeleteObject on it.
+#
+# Test immediately instead of waiting for the schedule:
+#   kubectl -n openbao create job snapshot-test --from=cronjob/openbao-snapshot
+#   kubectl -n openbao wait --for=condition=complete job/snapshot-test --timeout=180s \
+#     || kubectl -n openbao logs job/snapshot-test
+#   kubectl -n openbao delete job snapshot-test
+#
+# Keep the unseal/recovery keys (or KMS key) WITH the backups: a snapshot
+# cannot be decrypted without them.
+#
+# Docs: docs/chart/11-backup-snapshot-agent.md
+
+snapshotAgent:
+  enabled: true
+
+  # Every 6 hours (cluster time zone, usually UTC). The chart default
+  # (*/15 * * * *) creates ~96 snapshots a day.
+  schedule: "0 */6 * * *"
+  restartPolicy: OnFailure
+
+  image:
+    repository: ghcr.io/openbao/openbao-snapshot-agent
+    tag: "0.3.0"
+
+  # Must match bound_service_account_names of the OpenBao role.
+  # Default name: <fullname>-snapshot -> openbao-snapshot.
+  serviceAccount:
+    create: true
+    name: ""
+
+  s3CredentialsSecret: openbao-snapshot-s3
+
+  config:
+    # Always set the endpoint explicitly. The chart default
+    # (s3.eu-east-1.amazonaws.com) is not a valid AWS region endpoint.
+    s3Host: s3.eu-central-1.amazonaws.com
+    s3Bucket: acme-openbao-snapshots
+    # A prefix keeps snapshots of several clusters apart.
+    s3Uri: s3://acme-openbao-snapshots/prod/
+    # Deleted by the agent after this many days. An S3 lifecycle rule is more
+    # reliable: it also works when the agent stops running.
+    s3ExpireDays: "30"
+    # Extra s3cmd flags. Examples:
+    #   "--no-ssl"                         MinIO over plain HTTP
+    #   "--ca-certs=/etc/s3-ca/ca.crt"     private CA on the S3 side
+    # Avoid --no-check-certificate outside tests.
+    s3cmdExtraFlag: ""
+    baoAuthPath: kubernetes
+    baoRole: snapshot
+
+  # BAO_ADDR is computed by the chart (openbao-active in HA, openbao in
+  # standalone). There is no
+  # snapshotAgent.config.baoAddr value; to override, set it here:
+  # extraEnvironmentVars:
+  #   BAO_ADDR: https://openbao-active.openbao.svc:8200
+  #
+  # With global.tlsDisable=false the chart already mounts the TLS Secret at
+  # server.tls.mountPath and sets BAO_CACERT. Do not mount it again.
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+
+  # Chart defaults for the snapshot pod are already non-root with all
+  # capabilities dropped; nothing to override here.
+  securityContext:
+    pod: {}
+    container: {}

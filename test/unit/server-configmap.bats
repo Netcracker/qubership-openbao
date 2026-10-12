@@ -111,6 +111,44 @@ load _helpers
   [ ! -z "${actual}" ]
 }
 
+#--------------------------------------------------------------------
+# standalone = single-node integrated Raft storage
+
+@test "server/ConfigMap: standalone default uses single-node raft storage" {
+  cd `chart_dir`
+  local hcl=$(helm template \
+      --show-only templates/server-config-configmap.yaml \
+      --set 'server.dev_mode.enabled=false' \
+      --set 'server.standalone.enabled=true' \
+      . | tee /dev/stderr |
+      yq -r '.data["extraconfig-from-values.hcl"]')
+  echo "$hcl" | grep -q 'storage "raft"'
+  echo "$hcl" | grep -q 'path = "/openbao/data"'
+  [ -z "$(echo "$hcl" | grep 'storage "file"')" ]
+  [ -z "$(echo "$hcl" | grep 'retry_join')" ]
+  [ -z "$(echo "$hcl" | grep 'service_registration')" ]
+}
+
+@test "server/ConfigMap: standalone raft path follows dataStorage.mountPath" {
+  cd `chart_dir`
+  local hcl=$(helm template \
+      --show-only templates/server-config-configmap.yaml \
+      --set 'server.dev_mode.enabled=false' \
+      --set 'server.dataStorage.mountPath=/bao/raft' \
+      . | tee /dev/stderr |
+      yq -r '.data["extraconfig-from-values.hcl"]')
+  echo "$hcl" | grep -q 'path = "/bao/raft"'
+}
+
+@test "server/ConfigMap: default dev mode also uses raft storage" {
+  cd `chart_dir`
+  local hcl=$(helm template \
+      --show-only templates/server-config-configmap.yaml \
+      . | tee /dev/stderr |
+      yq -r '.data["extraconfig-from-values.hcl"]')
+  echo "$hcl" | grep -q 'storage "raft"'
+}
+
 @test "server/ConfigMap: ha extraConfig is set" {
   cd `chart_dir`
   local actual=$(helm template \
