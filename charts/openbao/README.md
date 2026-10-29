@@ -28,6 +28,7 @@ Kubernetes: `>= 1.30.0-0`
 | APPLICATION_NAME | string | `"openbao"` | Value of the `app.kubernetes.io/part-of` label. |
 | MANAGED_BY | string | `"Helm"` | Value of the `app.kubernetes.io/managed-by` label. |
 | DEPLOYMENT_SESSION_ID | string | `""` | Value of the `deployment.netcracker.com/sessionId` label. |
+| PAAS_PLATFORM | string | `"KUBERNETES"` | Target platform: `KUBERNETES` or `OPENSHIFT`. On `OPENSHIFT` the chart omits `runAsUser`/`runAsGroup`/`fsGroup` so the SCC assigns them; equivalent to `global.openshift: true`. |
 | extraObjects | list | `[]` |  |
 | global.enabled | bool | `true` | enabled is the master enabled switch. Setting this to true or false will enable or disable all the components within this chart by default. |
 | global.externalBaoAddr | string | `""` | External openbao server address for the injector and CSI provider to use. Setting this will disable deployment of an OpenBao server. |

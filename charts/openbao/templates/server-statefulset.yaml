@@ -61,7 +61,7 @@ spec:
       shareProcessNamespace: true
       {{ end }}
       {{- template "server.statefulSet.securityContext.pod" . }}
-      {{- if not .Values.global.openshift }}
+      {{- if not (include "openbao.isOpenshift" .) }}
       hostNetwork: {{ .Values.server.hostNetwork }}
       {{- end }}
       volumes:

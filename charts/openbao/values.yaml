@@ -15,6 +15,11 @@ SERVICE_NAME: openbao
 APPLICATION_NAME: openbao
 MANAGED_BY: Helm
 DEPLOYMENT_SESSION_ID: ""
+# -- Target platform: "KUBERNETES" or "OPENSHIFT". Normally supplied by the
+# Netcracker deployer. On "OPENSHIFT" the chart does not set runAsUser/runAsGroup/
+# fsGroup, so the SCC (restricted-v2) assigns them from the namespace range.
+# Equivalent to global.openshift: true (either one enables OpenShift mode).
+PAAS_PLATFORM: KUBERNETES
 
 global:
   # -- enabled is the master enabled switch. Setting this to true or false

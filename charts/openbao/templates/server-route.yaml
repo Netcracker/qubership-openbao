@@ -3,7 +3,7 @@ Copyright (c) HashiCorp, Inc.
 SPDX-License-Identifier: MPL-2.0
 */}}
 
-{{- if .Values.global.openshift }}
+{{- if include "openbao.isOpenshift" . }}
 {{- if ne .mode "external" }}
 {{- if .Values.server.route.enabled -}}
 {{- $serviceName := include "openbao.fullname" . -}}
