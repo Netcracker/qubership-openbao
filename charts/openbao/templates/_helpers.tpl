@@ -58,6 +58,18 @@ Allow the release namespace to be overridden
 {{- end -}}
 
 {{/*
+Returns "true" when the target platform is OpenShift, otherwise an empty string.
+The platform is OpenShift when either PAAS_PLATFORM is "OPENSHIFT" (set by the
+Netcracker deployer) or global.openshift is true (upstream chart flag).
+Usage: {{- if include "openbao.isOpenshift" . }}
+*/}}
+{{- define "openbao.isOpenshift" -}}
+{{- if or (eq (upper (toString (.Values.PAAS_PLATFORM | default "KUBERNETES"))) "OPENSHIFT") (eq (toString .Values.global.openshift) "true") -}}
+true
+{{- end -}}
+{{- end -}}
+
+{{/*
 Compute if the csi driver is enabled.
 */}}
 {{- define "openbao.csiEnabled" -}}
@@ -612,7 +624,7 @@ securityContext for the injector pod level.
         {{- else }}
           {{- toYaml .Values.injector.securityContext.pod | nindent 8 }}
         {{- end }}
-  {{- else if not .Values.global.openshift }}
+  {{- else if not (include "openbao.isOpenshift" .) }}
       securityContext:
         seccompProfile:
           type: RuntimeDefault
@@ -635,7 +647,7 @@ securityContext for the injector container level.
             {{- else }}
               {{- toYaml .Values.injector.securityContext.container | nindent 12 }}
             {{- end }}
-  {{- else if not .Values.global.openshift }}
+  {{- else if not (include "openbao.isOpenshift" .) }}
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -656,7 +668,7 @@ securityContext for the statefulset pod template.
         {{- else }}
           {{- toYaml .Values.server.statefulSet.securityContext.pod | nindent 8 }}
         {{- end }}
-  {{- else if not .Values.global.openshift }}
+  {{- else if not (include "openbao.isOpenshift" .) }}
       securityContext:
         seccompProfile:
           type: RuntimeDefault
@@ -679,7 +691,7 @@ securityContext for the statefulset openbao container
             {{- else }}
               {{- toYaml .Values.server.statefulSet.securityContext.container | nindent 12 }}
             {{- end }}
-  {{- else if not .Values.global.openshift }}
+  {{- else if not (include "openbao.isOpenshift" .) }}
           securityContext:
             allowPrivilegeEscalation: false
   {{- end }}
@@ -1364,7 +1376,7 @@ securityContext for the snapshotAgent pod level.
             {{- else }}
               {{- toYaml .Values.snapshotAgent.securityContext.pod | nindent 12 }}
             {{- end }}
-  {{- else if not .Values.global.openshift }}
+  {{- else if not (include "openbao.isOpenshift" .) }}
           securityContext:
             seccompProfile:
               type: RuntimeDefault
@@ -1387,7 +1399,7 @@ securityContext for the snapshotAgent container level.
               {{- else }}
                 {{- toYaml .Values.snapshotAgent.securityContext.container | nindent 14 }}
               {{- end }}
-  {{- else if not .Values.global.openshift }}
+  {{- else if not (include "openbao.isOpenshift" .) }}
             securityContext:
               allowPrivilegeEscalation: false
               capabilities:

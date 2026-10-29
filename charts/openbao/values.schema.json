@@ -14,6 +14,9 @@
         "DEPLOYMENT_SESSION_ID": {
             "type": "string"
         },
+        "PAAS_PLATFORM": {
+            "type": "string"
+        },
         "extraObjects": {
             "type": "array"
         },

@@ -69,6 +69,7 @@ the upstream chart.
 | [12-advanced.md](12-advanced.md) | Custom HCL, auto-unseal, plugins, sidecars, OpenShift, air-gapped installs, upgrades, dual-stack |
 | [13-troubleshooting.md](13-troubleshooting.md) | Render-time errors, runtime problems, diagnostics |
 | [14-known-issues.md](14-known-issues.md) | Known gaps between values, templates, tests and docs |
+| [15-test-plan.md](15-test-plan.md) | Chart test plan: test levels, environments, unit/acceptance cases, exit criteria |
 
 ## Reading paths
 
