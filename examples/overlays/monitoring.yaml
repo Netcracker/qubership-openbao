@@ -112,6 +112,24 @@ serverTelemetry:
         annotations:
           summary: OpenBao snapshot job {{ $labels.job_name }} failed
 
+      - alert: OpenBaoSnapshotMissing
+        # Requires kube-state-metrics. Fires when no snapshot has succeeded for
+        # more than 2x the schedule interval. 12h matches the 6-hour schedule in
+        # examples/overlays/snapshot-s3.yaml; adjust it to your
+        # snapshotAgent.schedule. Harmless if the snapshot agent is off.
+        expr: |
+          time() - kube_cronjob_status_last_successful_time{cronjob=~".*openbao-snapshot"} > 12 * 3600
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: >-
+            No successful OpenBao snapshot from {{ $labels.cronjob }} for more
+            than 12 hours
+          description: >-
+            Check the CronJob (suspended? concurrencyPolicy Forbid with a hung
+            job?) and the logs of the latest snapshot Job.
+
   grafanaDashboard:
     enabled: true
     # Empty = chart namespace. Set to the namespace the Grafana sidecar watches

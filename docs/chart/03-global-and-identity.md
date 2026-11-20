@@ -188,16 +188,10 @@ kubectl -n openbao create secret docker-registry registry-creds \
   --docker-username=robot --docker-password='***'
 ```
 
-### Pitfall: snapshot agent
+### Snapshot agent
 
-The snapshot agent CronJob template does not render `imagePullSecrets`. If the
-snapshot image comes from a private registry, attach the pull secret to the
-snapshot ServiceAccount:
-
-```bash
-kubectl -n openbao patch serviceaccount openbao-snapshot \
-  -p '{"imagePullSecrets":[{"name":"registry-creds"}]}'
-```
+The snapshot agent CronJob renders the same `global.imagePullSecrets` on its
+Job pods. No ServiceAccount patch is needed.
 
 ---
 
