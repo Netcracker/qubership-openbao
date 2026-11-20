@@ -912,16 +912,38 @@
         "snapshotAgent": {
             "type": "object",
             "properties": {
+                "activeDeadlineSeconds": {
+                    "type": ["null", "integer"]
+                },
+                "affinity": {
+                    "type": ["object", "string"]
+                },
                 "annotations": {
                     "type": ["object", "string"]
+                },
+                "backoffLimit": {
+                    "type": ["null", "integer"]
+                },
+                "concurrencyPolicy": {
+                    "type": "string",
+                    "enum": ["Allow", "Forbid", "Replace"]
                 },
                 "config": {
                     "type": "object",
                     "properties": {
+                        "baoAuthNamespace": {
+                            "type": "string"
+                        },
                         "baoAuthPath": {
                             "type": "string"
                         },
+                        "baoNamespace": {
+                            "type": "string"
+                        },
                         "baoRole": {
+                            "type": "string"
+                        },
+                        "baoSecretPath": {
                             "type": "string"
                         },
                         "s3Bucket": {
@@ -938,6 +960,9 @@
                         },
                         "s3cmdExtraFlag": {
                             "type": "string"
+                        },
+                        "tokenPath": {
+                            "type": "string"
                         }
                     }
                 },
@@ -945,6 +970,9 @@
                     "type": "boolean"
                 },
                 "extraEnvironmentVars": {
+                    "type": "object"
+                },
+                "extraLabels": {
                     "type": "object"
                 },
                 "extraSecretEnvironmentVars": {
@@ -956,6 +984,9 @@
                 "extraVolumes": {
                     "type": "array"
                 },
+                "failedJobsHistoryLimit": {
+                    "type": ["null", "integer"]
+                },
                 "image": {
                     "type": "object",
                     "properties": {
@@ -964,6 +995,31 @@
                         },
                         "tag": {
                             "type": "string"
+                        }
+                    }
+                },
+                "job": {
+                    "type": "object",
+                    "properties": {
+                        "annotations": {
+                            "type": ["object", "string"]
+                        },
+                        "extraLabels": {
+                            "type": "object"
+                        }
+                    }
+                },
+                "nodeSelector": {
+                    "type": ["object", "string"]
+                },
+                "pod": {
+                    "type": "object",
+                    "properties": {
+                        "annotations": {
+                            "type": ["object", "string"]
+                        },
+                        "extraLabels": {
+                            "type": "object"
                         }
                     }
                 },
@@ -978,6 +1034,15 @@
                 },
                 "schedule": {
                     "type": "string"
+                },
+                "snapshotDirSizeLimit": {
+                    "type": "string"
+                },
+                "startingDeadlineSeconds": {
+                    "type": ["null", "integer"]
+                },
+                "successfulJobsHistoryLimit": {
+                    "type": ["null", "integer"]
                 },
                 "securityContext": {
                     "type": "object",

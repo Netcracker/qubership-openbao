@@ -1,4 +1,4 @@
-
+{{ template "openbao.mode" . }}
 ---
 {{- if .Values.snapshotAgent.enabled }}
 apiVersion: v1
@@ -20,8 +20,20 @@ data:
   S3_URI: {{ .Values.snapshotAgent.config.s3Uri }}
   S3_EXPIRE_DAYS: {{ .Values.snapshotAgent.config.s3ExpireDays | quote }}
   BAO_AUTH_PATH: {{ .Values.snapshotAgent.config.baoAuthPath }}
+  {{- with .Values.snapshotAgent.config.baoNamespace }}
+  BAO_NAMESPACE: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.snapshotAgent.config.baoAuthNamespace }}
+  BAO_AUTH_NAMESPACE: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.snapshotAgent.config.baoSecretPath }}
+  BAO_SECRET_PATH: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.snapshotAgent.config.tokenPath }}
+  TOKEN_PATH: {{ . | quote }}
+  {{- end }}
   BAO_ROLE: {{ .Values.snapshotAgent.config.baoRole }}
-  {{- if eq (include "openbao.tlsEnabled" .) "true" }}
+  {{- if eq (include "openbao.snapshotAgent.mountServerTls" .) "true" }}
   BAO_CACERT: "{{ include "openbao.tls.caCertPath" . }}"
   {{- end }}
   {{- if include "openbao.global.externalAddr" . }}
