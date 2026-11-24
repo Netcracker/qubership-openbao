@@ -304,7 +304,7 @@ helm install openbao ./charts/openbao -n openbao \
 | Override in `values.openshift.yaml` | Why |
 |--------------------------------------|-----|
 | `global.openshift: true` | Turns on the behavior above |
-| `server.image.registry: registry.connect.redhat.com`, `repository: openbao/openbao-ubi` | Certified UBI image. `tag` is not overridden, so it stays `2.6.2`. Check that this tag exists in that registry |
+| `server.image.registry: registry.connect.redhat.com`, `repository: openbao/openbao-ubi` | Certified UBI image. `tag` is not overridden, so it stays `2.7.3`. Check that this tag exists in that registry |
 | `server.readinessProbe.path: /v1/sys/health?uninitcode=204` | Switches to an `httpGet` probe. An uninitialized server returns 204 and counts as ready, so the Route works before initialization |
 | `injector.*` | Not used by this distribution |
 
@@ -408,7 +408,7 @@ injects it.
 # Supplied by the deployer
 deployDescriptor:
   openbao:
-    image: artifactory.example.com/qubership/openbao:2.6.2-nc1
+    image: artifactory.example.com/qubership/openbao:2.7.3-nc1
 ```
 
 Rendered:
@@ -416,7 +416,7 @@ Rendered:
 ```yaml
 containers:
   - name: openbao
-    image: "artifactory.example.com/qubership/openbao:2.6.2-nc1"
+    image: "artifactory.example.com/qubership/openbao:2.7.3-nc1"
 ```
 
 `deployDescriptor` overrides only the server image. The snapshot agent image

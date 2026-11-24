@@ -1495,7 +1495,7 @@ spec:
     fsGroup: 1000
   containers:
     - name: migrate
-      image: quay.io/openbao/openbao:2.6.2     # same version as the server
+      image: quay.io/openbao/openbao:2.7.3     # same version as the server
       command: ["/bin/sh", "-ec"]
       args:
         - |

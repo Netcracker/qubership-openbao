@@ -439,8 +439,8 @@ OpenShift. `server-ingress.yaml` does not check `global.openshift`.
 
 | Source | Version |
 |--------|---------|
-| `Chart.yaml` | `appVersion: v2.6.2` |
-| `values.yaml` | `server.image.tag: "2.6.2"` |
+| `Chart.yaml` | `appVersion: v2.7.3` |
+| `values.yaml` | `server.image.tag: "2.7.3"` |
 | `charts/openbao/README.md` | badge `v2.5.4`, `server.image.tag` `""` |
 | `docs/configuration.md` | `server.image.tag` `"2.5"` |
 

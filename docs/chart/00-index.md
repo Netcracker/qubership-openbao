@@ -9,7 +9,7 @@ parameter reference and the mode-specific guides.
 |------|-------|
 | Chart name | `openbao` |
 | Chart version | `0.28.3` (`charts/openbao/Chart.yaml`) |
-| Application version | `v2.6.2` (default image `quay.io/openbao/openbao:2.6.2`) |
+| Application version | `v2.7.3` (default image `quay.io/openbao/openbao:2.7.3`) |
 | Upstream | [`openbao/openbao-helm`](https://github.com/openbao/openbao-helm) |
 | Kubernetes | `>= 1.30.0-0` |
 
