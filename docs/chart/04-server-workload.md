@@ -31,7 +31,7 @@ and most helpers are in
 |-----|------|---------|--------|
 | `server.image.registry` | string | `quay.io` | Registry host |
 | `server.image.repository` | string | `openbao/openbao` | Repository path **without** the registry |
-| `server.image.tag` | string (tpl) | `2.6.2` | Image tag. Rendered with `tpl` |
+| `server.image.tag` | string (tpl) | `2.7.3` | Image tag. Rendered with `tpl` |
 | `server.image.pullPolicy` | string | `IfNotPresent` | `imagePullPolicy` of the server container |
 
 The reference is `<registry>/<repository>:<tag>`. An injected
@@ -47,14 +47,14 @@ server:
   image:
     registry: registry.internal.example.com
     repository: mirror/openbao/openbao
-    tag: "2.6.2"
+    tag: "2.7.3"
 global:
   imagePullSecrets:
     - mirror-creds
 ```
 
 Tag from the chart `appVersion`. `tpl` makes this work, but `appVersion` is
-`v2.6.2` with a `v` prefix, and the upstream image tags have no prefix:
+`v2.7.3` with a `v` prefix, and the upstream image tags have no prefix:
 
 ```yaml
 server:
@@ -67,7 +67,7 @@ Use `pullPolicy: Always` with a moving tag such as `latest`.
 ### Pitfall
 
 `charts/openbao/README.md` says the default tag is `""` and the appVersion is
-`v2.5.4`. Older docs say `2.5`. `values.yaml` sets `2.6.2`, and that value
+`v2.5.4`. Older docs say `2.5`. `values.yaml` sets `2.7.3`, and that value
 wins.
 
 ---

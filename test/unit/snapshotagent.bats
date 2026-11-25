@@ -117,6 +117,180 @@ load _helpers
   [ "${actual}" = "creds" ]
 }
 
+@test "snapshot/cronjob: s3CredentialsSecret optional (not rendered by default)" {
+  cd `chart_dir`
+  local actual=$(helm template \
+    --show-only templates/snapshotagent-cronjob.yaml \
+    --set 'snapshotAgent.enabled=true' \
+    . | tee /dev/stderr |
+    yq -r '[.spec.jobTemplate.spec.template.spec.containers[0].env // [] | .[] | select(.name == "AWS_ACCESS_KEY_ID" or .name == "AWS_SECRET_ACCESS_KEY")] | length' | tee /dev/stderr)
+  [ "${actual}" = "0" ]
+}
+
+#--------------------------------------------------------------------
+# CronJob / Job options
+
+@test "snapshot/cronjob: concurrencyPolicy defaults to Forbid" {
+  cd `chart_dir`
+  local actual=$(helm template \
+    --show-only templates/snapshotagent-cronjob.yaml \
+    --set 'snapshotAgent.enabled=true' \
+    . | tee /dev/stderr |
+    yq -r '.spec.concurrencyPolicy' | tee /dev/stderr)
+  [ "${actual}" = "Forbid" ]
+}
+
+@test "snapshot/cronjob: concurrencyPolicy can be set" {
+  cd `chart_dir`
+  local actual=$(helm template \
+    --show-only templates/snapshotagent-cronjob.yaml \
+    --set 'snapshotAgent.enabled=true' \
+    --set 'snapshotAgent.concurrencyPolicy=Replace' \
+    . | tee /dev/stderr |
+    yq -r '.spec.concurrencyPolicy' | tee /dev/stderr)
+  [ "${actual}" = "Replace" ]
+}
+
+@test "snapshot/cronjob: history limits and deadlines not set by default" {
+  cd `chart_dir`
+  local actual=$(helm template \
+    --show-only templates/snapshotagent-cronjob.yaml \
+    --set 'snapshotAgent.enabled=true' \
+    . | tee /dev/stderr |
+    yq '[.spec.startingDeadlineSeconds, .spec.successfulJobsHistoryLimit, .spec.failedJobsHistoryLimit, .spec.jobTemplate.spec.backoffLimit, .spec.jobTemplate.spec.activeDeadlineSeconds] | map(. == null) | all' | tee /dev/stderr)
+  [ "${actual}" = "true" ]
+}
+
+@test "snapshot/cronjob: history limits and deadlines can be set (including 0)" {
+  cd `chart_dir`
+  local object=$(helm template \
+    --show-only templates/snapshotagent-cronjob.yaml \
+    --set 'snapshotAgent.enabled=true' \
+    --set 'snapshotAgent.startingDeadlineSeconds=300' \
+    --set 'snapshotAgent.successfulJobsHistoryLimit=0' \
+    --set 'snapshotAgent.failedJobsHistoryLimit=2' \
+    --set 'snapshotAgent.backoffLimit=1' \
+    --set 'snapshotAgent.activeDeadlineSeconds=600' \
+    . | tee /dev/stderr)
+  [ "$(echo "$object" | yq -r '.spec.startingDeadlineSeconds')" = "300" ]
+  [ "$(echo "$object" | yq -r '.spec.successfulJobsHistoryLimit')" = "0" ]
+  [ "$(echo "$object" | yq -r '.spec.failedJobsHistoryLimit')" = "2" ]
+  [ "$(echo "$object" | yq -r '.spec.jobTemplate.spec.backoffLimit')" = "1" ]
+  [ "$(echo "$object" | yq -r '.spec.jobTemplate.spec.activeDeadlineSeconds')" = "600" ]
+}
+
+@test "snapshot/cronjob: imagePullSecrets from global" {
+  cd `chart_dir`
+  local actual=$(helm template \
+    --show-only templates/snapshotagent-cronjob.yaml \
+    --set 'snapshotAgent.enabled=true' \
+    --set 'global.imagePullSecrets[0]=regcred' \
+    . | tee /dev/stderr |
+    yq -r '.spec.jobTemplate.spec.template.spec.imagePullSecrets[0].name' | tee /dev/stderr)
+  [ "${actual}" = "regcred" ]
+}
+
+@test "snapshot/cronjob: image defaults to upstream 0.4.5" {
+  cd `chart_dir`
+  local actual=$(helm template \
+    --show-only templates/snapshotagent-cronjob.yaml \
+    --set 'snapshotAgent.enabled=true' \
+    . | tee /dev/stderr |
+    yq -r '.spec.jobTemplate.spec.template.spec.containers[0].image' | tee /dev/stderr)
+  [ "${actual}" = "ghcr.io/openbao/openbao-snapshot-agent:0.4.5" ]
+}
+
+@test "snapshot/cronjob: snapshotDirSizeLimit" {
+  cd `chart_dir`
+  local actual=$(helm template \
+    --show-only templates/snapshotagent-cronjob.yaml \
+    --set 'snapshotAgent.enabled=true' \
+    --set 'snapshotAgent.snapshotDirSizeLimit=2Gi' \
+    . | tee /dev/stderr |
+    yq -r '.spec.jobTemplate.spec.template.spec.volumes[0].emptyDir.sizeLimit' | tee /dev/stderr)
+  [ "${actual}" = "2Gi" ]
+}
+
+@test "snapshot/cronjob: extra labels and annotations on CronJob, Job and Pod" {
+  cd `chart_dir`
+  local object=$(helm template \
+    --show-only templates/snapshotagent-cronjob.yaml \
+    --set 'snapshotAgent.enabled=true' \
+    --set 'snapshotAgent.extraLabels.c=cron' \
+    --set 'snapshotAgent.job.extraLabels.j=job' \
+    --set 'snapshotAgent.job.annotations.ja=job' \
+    --set 'snapshotAgent.pod.extraLabels.p=pod' \
+    --set 'snapshotAgent.pod.annotations.pa=pod' \
+    . | tee /dev/stderr)
+  [ "$(echo "$object" | yq -r '.metadata.labels.c')" = "cron" ]
+  [ "$(echo "$object" | yq -r '.spec.jobTemplate.metadata.labels.j')" = "job" ]
+  [ "$(echo "$object" | yq -r '.spec.jobTemplate.metadata.annotations.ja')" = "job" ]
+  [ "$(echo "$object" | yq -r '.spec.jobTemplate.spec.template.metadata.labels.p')" = "pod" ]
+  [ "$(echo "$object" | yq -r '.spec.jobTemplate.spec.template.metadata.annotations.pa')" = "pod" ]
+  [ "$(echo "$object" | yq -r '.spec.jobTemplate.spec.template.metadata.labels["app.kubernetes.io/component"]')" = "snapshot-agent" ]
+  [ "$(echo "$object" | yq -r '.spec.jobTemplate.spec.template.metadata.labels.component')" = "snapshot-agent" ]
+}
+
+@test "snapshot/cronjob: nodeSelector and affinity" {
+  cd `chart_dir`
+  local object=$(helm template \
+    --show-only templates/snapshotagent-cronjob.yaml \
+    --set 'snapshotAgent.enabled=true' \
+    --set 'snapshotAgent.nodeSelector.disk=ssd' \
+    --set 'snapshotAgent.affinity.nodeAffinity.foo=bar' \
+    . | tee /dev/stderr)
+  [ "$(echo "$object" | yq -r '.spec.jobTemplate.spec.template.spec.nodeSelector.disk')" = "ssd" ]
+  [ "$(echo "$object" | yq -r '.spec.jobTemplate.spec.template.spec.affinity.nodeAffinity.foo')" = "bar" ]
+}
+
+@test "snapshot/cronjob: nodeSelector and affinity not set by default" {
+  cd `chart_dir`
+  local actual=$(helm template \
+    --show-only templates/snapshotagent-cronjob.yaml \
+    --set 'snapshotAgent.enabled=true' \
+    . | tee /dev/stderr |
+    yq '.spec.jobTemplate.spec.template.spec | (.nodeSelector == null) and (.affinity == null)' | tee /dev/stderr)
+  [ "${actual}" = "true" ]
+}
+
+#--------------------------------------------------------------------
+# TLS
+
+@test "snapshot/cronjob: TLS Secret mounted when TLS is on" {
+  cd `chart_dir`
+  local actual=$(helm template \
+    --show-only templates/snapshotagent-cronjob.yaml \
+    --set 'snapshotAgent.enabled=true' \
+    --set 'global.tlsDisable=false' \
+    . | tee /dev/stderr |
+    yq -r '.spec.jobTemplate.spec.template.spec.volumes[] | select(.name == "tls") | .secret.secretName' | tee /dev/stderr)
+  [ "${actual}" = "release-name-openbao-tls" ]
+}
+
+@test "snapshot/cronjob: TLS Secret not mounted in external mode" {
+  cd `chart_dir`
+  local actual=$(helm template \
+    --show-only templates/snapshotagent-cronjob.yaml \
+    --set 'snapshotAgent.enabled=true' \
+    --set 'global.tlsDisable=false' \
+    --set 'global.externalBaoAddr=https://bao.example.com' \
+    . | tee /dev/stderr |
+    yq -r '[.spec.jobTemplate.spec.template.spec.volumes[] | select(.name == "tls")] | length' | tee /dev/stderr)
+  [ "${actual}" = "0" ]
+}
+
+@test "snapshot/configmap: BAO_CACERT not set in external mode" {
+  cd `chart_dir`
+  local actual=$(helm template \
+    --show-only templates/snapshotagent-configmap.yaml \
+    --set 'snapshotAgent.enabled=true' \
+    --set 'global.tlsDisable=false' \
+    --set 'global.externalBaoAddr=https://bao.example.com' \
+    . | tee /dev/stderr |
+    yq -r '.data.BAO_CACERT' | tee /dev/stderr)
+  [ "${actual}" = "null" ]
+}
+
 @test "snapshot/serviceaccount: disabled" {
   cd `chart_dir`
   local actual=$(helm template \
@@ -183,7 +357,7 @@ load _helpers
   local actual=$(helm template \
     --show-only templates/snapshotagent-configmap.yaml \
     --set 'snapshotAgent.enabled=true' \
-    --set 'snapshotAgent.config.s3ExpireDays=1' \
+    --set-string 'snapshotAgent.config.s3ExpireDays=1' \
     --namespace foo \
     . | tee /dev/stderr |
     yq -r '.data.S3_EXPIRE_DAYS' | tee /dev/stderr)
@@ -263,6 +437,32 @@ load _helpers
   [ "${actual}" = "https://bao.example.com" ]
 }
 
+@test "snapshot/configmap: optional agent variables not set by default" {
+  cd `chart_dir`
+  local actual=$(helm template \
+    --show-only templates/snapshotagent-configmap.yaml \
+    --set 'snapshotAgent.enabled=true' \
+    . | tee /dev/stderr |
+    yq '.data | has("BAO_NAMESPACE") or has("BAO_AUTH_NAMESPACE") or has("BAO_SECRET_PATH") or has("TOKEN_PATH")' | tee /dev/stderr)
+  [ "${actual}" = "false" ]
+}
+
+@test "snapshot/configmap: baoNamespace, baoAuthNamespace, baoSecretPath, tokenPath" {
+  cd `chart_dir`
+  local object=$(helm template \
+    --show-only templates/snapshotagent-configmap.yaml \
+    --set 'snapshotAgent.enabled=true' \
+    --set 'snapshotAgent.config.baoNamespace=ns1' \
+    --set 'snapshotAgent.config.baoAuthNamespace=ns2' \
+    --set 'snapshotAgent.config.baoSecretPath=kv/s3' \
+    --set 'snapshotAgent.config.tokenPath=/var/run/token' \
+    . | tee /dev/stderr)
+  [ "$(echo "$object" | yq -r '.data.BAO_NAMESPACE')" = "ns1" ]
+  [ "$(echo "$object" | yq -r '.data.BAO_AUTH_NAMESPACE')" = "ns2" ]
+  [ "$(echo "$object" | yq -r '.data.BAO_SECRET_PATH')" = "kv/s3" ]
+  [ "$(echo "$object" | yq -r '.data.TOKEN_PATH')" = "/var/run/token" ]
+}
+
 #--------------------------------------------------------------------
 # extraEnvironmentVars
 
@@ -275,12 +475,12 @@ load _helpers
       . | tee /dev/stderr |
       yq -r '.spec.jobTemplate.spec.template.spec.containers[0].env' | tee /dev/stderr )
 
-  local actual=$(echo $object |
-     yq -r '.[2].name' | tee /dev/stderr)
+  local actual=$(echo "$object" |
+     yq -r 'map(select(.name=="BAO_FOO")) | .[0].name' | tee /dev/stderr)
   [ "${actual}" = "BAO_FOO" ]
 
-  local actual=$(echo $object |
-      yq -r '.[2].value' | tee /dev/stderr)
+  local actual=$(echo "$object" |
+      yq -r 'map(select(.name=="BAO_FOO")) | .[0].value' | tee /dev/stderr)
   [ "${actual}" = "bar" ]
 }
 
@@ -301,19 +501,19 @@ load _helpers
       . | tee /dev/stderr |
       yq -r '.spec.jobTemplate.spec.template.spec.containers[0].env' | tee /dev/stderr)
 
-  local value=$(echo $object |
+  local value=$(echo "$object" |
       yq -r 'map(select(.name=="ENV_FOO_0")) | .[] .valueFrom.secretKeyRef.name' | tee /dev/stderr)
   [ "${value}" = "secret_name_0" ]
 
-  local value=$(echo $object |
+  local value=$(echo "$object" |
       yq -r 'map(select(.name=="ENV_FOO_0")) | .[] .valueFrom.secretKeyRef.key' | tee /dev/stderr)
   [ "${value}" = "secret_key_0" ]
 
-  local value=$(echo $object |
+  local value=$(echo "$object" |
       yq -r 'map(select(.name=="ENV_FOO_1")) | .[] .valueFrom.secretKeyRef.name' | tee /dev/stderr)
   [ "${value}" = "secret_name_1" ]
 
-  local value=$(echo $object |
+  local value=$(echo "$object" |
       yq -r 'map(select(.name=="ENV_FOO_1")) | .[] .valueFrom.secretKeyRef.key' | tee /dev/stderr)
   [ "${value}" = "secret_key_1" ]
 }
@@ -331,11 +531,11 @@ load _helpers
       . | tee /dev/stderr |
       yq -r '.spec.jobTemplate.spec.template.spec.containers[0].volumeMounts' | tee /dev/stderr )
 
-  local actual=$(echo $object |
+  local actual=$(echo "$object" |
      yq -r '.[1].mountPath' | tee /dev/stderr)
   [ "${actual}" = "/mnt" ]
 
-  local actual=$(echo $object |
+  local actual=$(echo "$object" |
       yq -r '.[1].name' | tee /dev/stderr)
   [ "${actual}" = "secret" ]
 }
@@ -438,6 +638,6 @@ load _helpers
       --set 'snapshotAgent.enabled=true' \
       --set "snapshotAgent.tolerations[0].foo=bar,snapshotAgent.tolerations[1].baz=qux" \
       . | tee /dev/stderr |
-      yq '.spec.jobTemplate.spec.template.spec.tolerations == [{"foo": "bar"}, {"baz": "qux"}]' | tee /dev/stderr)
-  [ "${actual}" = "true" ]
+      yq -o json -I0 '.spec.jobTemplate.spec.template.spec.tolerations' | tee /dev/stderr)
+  [ "${actual}" = '[{"foo":"bar"},{"baz":"qux"}]' ]
 }

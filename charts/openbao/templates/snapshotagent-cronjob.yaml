@@ -1,3 +1,4 @@
+{{ template "openbao.mode" . }}
 {{- if .Values.snapshotAgent.enabled }}
 ---
 apiVersion: batch/v1
@@ -8,45 +9,80 @@ metadata:
     app.kubernetes.io/part-of: '{{ .Values.APPLICATION_NAME }}'
     app.kubernetes.io/managed-by: '{{ .Values.MANAGED_BY }}'
     deployment.netcracker.com/sessionId: '{{ .Values.DEPLOYMENT_SESSION_ID }}'
+    {{- with .Values.snapshotAgent.extraLabels }}
+      {{- toYaml . | nindent 4 }}
+    {{- end }}
   {{- template "openbao.snapshotAgent.annotations" . }}
   name: {{ template "openbao.fullname" . }}-snapshot
   namespace: {{ include "openbao.namespace" . }}
 spec:
+  {{- with .Values.snapshotAgent.concurrencyPolicy }}
+  concurrencyPolicy: {{ . }}
+  {{- end }}
   schedule: {{ .Values.snapshotAgent.schedule | quote }}
+  {{- if not (kindIs "invalid" .Values.snapshotAgent.startingDeadlineSeconds) }}
+  startingDeadlineSeconds: {{ .Values.snapshotAgent.startingDeadlineSeconds }}
+  {{- end }}
+  {{- if not (kindIs "invalid" .Values.snapshotAgent.successfulJobsHistoryLimit) }}
+  successfulJobsHistoryLimit: {{ .Values.snapshotAgent.successfulJobsHistoryLimit }}
+  {{- end }}
+  {{- if not (kindIs "invalid" .Values.snapshotAgent.failedJobsHistoryLimit) }}
+  failedJobsHistoryLimit: {{ .Values.snapshotAgent.failedJobsHistoryLimit }}
+  {{- end }}
   jobTemplate:
     metadata:
       labels:
         app.kubernetes.io/name: {{ include "openbao.name" . }}
         app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: snapshot-agent
         component: snapshot-agent
+        {{- with .Values.snapshotAgent.job.extraLabels }}
+          {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- template "openbao.snapshotAgent.job.annotations" . }}
     spec:
+      {{- if not (kindIs "invalid" .Values.snapshotAgent.backoffLimit) }}
+      backoffLimit: {{ .Values.snapshotAgent.backoffLimit }}
+      {{- end }}
+      {{- if not (kindIs "invalid" .Values.snapshotAgent.activeDeadlineSeconds) }}
+      activeDeadlineSeconds: {{ .Values.snapshotAgent.activeDeadlineSeconds }}
+      {{- end }}
       template:
         metadata:
           labels:
             app.kubernetes.io/name: {{ include "openbao.name" . }}
             app.kubernetes.io/instance: {{ .Release.Name }}
+            app.kubernetes.io/component: snapshot-agent
             component: snapshot-agent
+            {{- with .Values.snapshotAgent.pod.extraLabels }}
+              {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- template "openbao.snapshotAgent.pod.annotations" . }}
         spec:
           restartPolicy: {{ .Values.snapshotAgent.restartPolicy }}
           serviceAccountName: {{  template "openbao.snapshotAgent.serviceAccount.name" . }}
           {{ template "snapshotAgent.securityContext.pod" .}}
           {{ template "snapshotAgent.tolerations" . }}
+          {{ template "snapshotAgent.nodeselector" . }}
+          {{ template "snapshotAgent.affinity" . }}
           containers:
           - name: bao-snapshot
             envFrom:
             - configMapRef:
                 name: {{ template "openbao.fullname" . }}-snapshot
             env:
+            {{- with .Values.snapshotAgent.s3CredentialsSecret }}
             - name: AWS_SECRET_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
                   key: AWS_SECRET_ACCESS_KEY
-                  name: {{ .Values.snapshotAgent.s3CredentialsSecret }}
+                  name: {{ . }}
             - name: AWS_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:
                   key: AWS_ACCESS_KEY_ID
-                  name: {{ .Values.snapshotAgent.s3CredentialsSecret }}
+                  name: {{ . }}
+            {{- end }}
             {{- include "openbao.extraSecretEnvironmentVars" .Values.snapshotAgent | nindent 12 }}
             {{- include "openbao.extraEnvironmentVars" .Values.snapshotAgent | nindent 12 }}
             image: {{ .Values.snapshotAgent.image.repository }}:{{ .Values.snapshotAgent.image.tag }}
@@ -55,7 +91,7 @@ spec:
             volumeMounts:
               - name: snapshot-dir
                 mountPath: /bao-snapshots
-              {{- if eq (include "openbao.tlsEnabled" .) "true" }}
+              {{- if eq (include "openbao.snapshotAgent.mountServerTls" .) "true" }}
               - name: tls
                 readOnly: true
                 mountPath: {{ .Values.server.tls.mountPath }}
@@ -66,8 +102,13 @@ spec:
             imagePullPolicy: IfNotPresent
           volumes:
           - name: snapshot-dir
+            {{- if .Values.snapshotAgent.snapshotDirSizeLimit }}
+            emptyDir:
+              sizeLimit: {{ .Values.snapshotAgent.snapshotDirSizeLimit }}
+            {{- else }}
             emptyDir: {}
-          {{- if eq (include "openbao.tlsEnabled" .) "true" }}
+            {{- end }}
+          {{- if eq (include "openbao.snapshotAgent.mountServerTls" .) "true" }}
           - name: tls
             secret:
               secretName: {{ template "openbao.tls.secretName" . }}
@@ -76,4 +117,5 @@ spec:
           {{- if .Values.snapshotAgent.extraVolumes }}
             {{- toYaml .Values.snapshotAgent.extraVolumes | nindent 10 }}
           {{- end }}
+          {{- include "imagePullSecrets" . | nindent 10 }}
 {{ end }}

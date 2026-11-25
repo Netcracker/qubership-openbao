@@ -15,7 +15,8 @@
 #   1. Configure Kubernetes auth, the `snapshot` policy and the role, bound to
 #      the ServiceAccount openbao-snapshot in namespace openbao:
 #        examples/scripts/configure-snapshot-auth.sh --namespace openbao
-#   2. Create the S3 credentials Secret. The CronJob reads EXACTLY these keys:
+#   2. Create the S3 credentials Secret (or see s3CredentialsSecret below for
+#      the alternatives). The CronJob reads EXACTLY these keys:
 #        kubectl -n openbao create secret generic openbao-snapshot-s3 \
 #          --from-literal=AWS_ACCESS_KEY_ID=<access-key> \
 #          --from-literal=AWS_SECRET_ACCESS_KEY=<secret-key>
@@ -40,10 +41,19 @@ snapshotAgent:
   # (*/15 * * * *) creates ~96 snapshots a day.
   schedule: "0 */6 * * *"
   restartPolicy: OnFailure
+  # Never run two snapshot jobs at the same time (chart default).
+  concurrencyPolicy: Forbid
+  # Skip a run that could not start within 5 minutes; stop a hung run after 30.
+  startingDeadlineSeconds: 300
+  activeDeadlineSeconds: 1800
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  # Snapshots are written here before upload. Size it to ~2x the Raft data.
+  snapshotDirSizeLimit: 2Gi
 
   image:
     repository: ghcr.io/openbao/openbao-snapshot-agent
-    tag: "0.3.0"
+    tag: "0.4.5"
 
   # Must match bound_service_account_names of the OpenBao role.
   # Default name: <fullname>-snapshot -> openbao-snapshot.
@@ -51,6 +61,8 @@ snapshotAgent:
     create: true
     name: ""
 
+  # Optional. Leave empty and use config.baoSecretPath (credentials stored in
+  # OpenBao KV) or IRSA (serviceAccount annotation + AWS_ROLE_ARN) instead.
   s3CredentialsSecret: openbao-snapshot-s3
 
   config:

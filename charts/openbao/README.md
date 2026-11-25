@@ -1,4 +1,4 @@
-﻿# openbao
+# openbao
 
 ![Version: 0.28.3](https://img.shields.io/badge/Version-0.28.3-informational?style=flat-square) ![AppVersion: v2.5.4](https://img.shields.io/badge/AppVersion-v2.5.4-informational?style=flat-square)
 
@@ -234,24 +234,39 @@ Kubernetes: `>= 1.30.0-0`
 | serverTelemetry.serviceMonitor.scrapeTimeout | string | `"10s"` |  |
 | serverTelemetry.serviceMonitor.selectors | object | `{}` |  |
 | serverTelemetry.serviceMonitor.tlsConfig | object | `{}` |  |
+| snapshotAgent.activeDeadlineSeconds | int | `nil` | Maximum duration in seconds of a job run |
+| snapshotAgent.affinity | object | `{}` | Affinity for the snapshot-agent pod |
 | snapshotAgent.annotations | object | `{}` |  |
+| snapshotAgent.backoffLimit | int | `nil` | Job retries before it is marked failed |
+| snapshotAgent.concurrencyPolicy | string | `"Forbid"` | CronJob concurrencyPolicy: Allow, Forbid or Replace |
+| snapshotAgent.config.baoAuthNamespace | string | `""` | Namespace for bao authentication, if different from baoNamespace |
 | snapshotAgent.config.baoAuthPath | string | `"kubernetes"` |  |
+| snapshotAgent.config.baoNamespace | string | `""` | OpenBao namespace. Empty for non-namespace installations |
 | snapshotAgent.config.baoRole | string | `"snapshot"` |  |
+| snapshotAgent.config.baoSecretPath | string | `""` | KV path to read AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY from |
 | snapshotAgent.config.s3Bucket | string | `"openbao-snapshots"` |  |
 | snapshotAgent.config.s3ExpireDays | string | `"14"` |  |
 | snapshotAgent.config.s3Host | string | `"s3.eu-east-1.amazonaws.com"` |  |
 | snapshotAgent.config.s3Uri | string | `"s3://openbao-snapshots"` |  |
 | snapshotAgent.config.s3cmdExtraFlag | string | `"-v"` |  |
+| snapshotAgent.config.tokenPath | string | `""` | ServiceAccount token path. Empty uses the default projected token |
 | snapshotAgent.enabled | bool | `false` |  |
 | snapshotAgent.extraEnvironmentVars | object | `{}` | Map of extra environment variables to set in the snapshot-agent cronjob |
+| snapshotAgent.extraLabels | object | `{}` | Extra labels on the CronJob |
 | snapshotAgent.extraSecretEnvironmentVars | list | `[]` | List of extra environment variables to set in the snapshot-agent cronjob These variables take value from existing Secret objects. |
 | snapshotAgent.extraVolumeMounts | list | `[]` | List of additional volumeMounts for the snapshot cronjob container. |
 | snapshotAgent.extraVolumes | list | `[]` | List of extraVolumes made available to the snapshot cronjob container. |
+| snapshotAgent.failedJobsHistoryLimit | int | `nil` | Failed jobs to keep |
 | snapshotAgent.image.repository | string | `"ghcr.io/openbao/openbao-snapshot-agent"` |  |
-| snapshotAgent.image.tag | string | `"0.3.0"` |  |
+| snapshotAgent.image.tag | string | `"0.4.5"` |  |
+| snapshotAgent.job.annotations | object | `{}` | Extra annotations on snapshot Jobs |
+| snapshotAgent.job.extraLabels | object | `{}` | Extra labels on snapshot Jobs |
+| snapshotAgent.nodeSelector | object | `{}` | nodeSelector for the snapshot-agent pod |
+| snapshotAgent.pod.annotations | object | `{}` | Extra annotations on snapshot Pods |
+| snapshotAgent.pod.extraLabels | object | `{}` | Extra labels on snapshot Pods |
 | snapshotAgent.resources | object | `{}` |  |
 | snapshotAgent.restartPolicy | string | `"OnFailure"` |  |
-| snapshotAgent.s3CredentialsSecret | string | `"my-s3-credentials"` |  |
+| snapshotAgent.s3CredentialsSecret | string | `""` | Existing Secret with AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY. Optional |
 | snapshotAgent.schedule | string | `"*/15 * * * *"` |  |
 | snapshotAgent.securityContext.container | object | `{}` |  |
 | snapshotAgent.securityContext.pod | object | `{}` |  |
@@ -259,6 +274,9 @@ Kubernetes: `>= 1.30.0-0`
 | snapshotAgent.serviceAccount.create | bool | `true` |  |
 | snapshotAgent.serviceAccount.extraLabels | object | `{}` |  |
 | snapshotAgent.serviceAccount.name | string | `""` |  |
+| snapshotAgent.snapshotDirSizeLimit | string | `""` | sizeLimit of the emptyDir the snapshot is written to |
+| snapshotAgent.startingDeadlineSeconds | int | `nil` | Deadline for starting a missed run |
+| snapshotAgent.successfulJobsHistoryLimit | int | `nil` | Successful jobs to keep |
 | snapshotAgent.tolerations | list | `[]` |  |
 | ui.activeOpenbaoPodOnly | bool | `false` |  |
 | ui.annotations | object | `{}` |  |

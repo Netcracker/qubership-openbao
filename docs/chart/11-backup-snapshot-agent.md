@@ -57,7 +57,7 @@ the pod.
 | Kubernetes auth method enabled and configured in OpenBao | The agent logs in with its ServiceAccount token |
 | An OpenBao policy and role for the agent | [§5.2](#52-create-the-policy-and-role) |
 | S3-compatible bucket and credentials | Upload target |
-| A Secret with `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` | Hard-coded key names in the CronJob |
+| S3 credentials: a Secret with `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, a KV secret in OpenBao, or IRSA | [§3.5](#35-s3-credentials) |
 | OpenBao unsealed, with an elected leader | Snapshots are served by the active node |
 
 The CronJob is rendered whenever `snapshotAgent.enabled: true`, in any mode.
@@ -82,30 +82,39 @@ helm upgrade --install openbao ./charts/openbao -n openbao \
 | `snapshotAgent.enabled` | bool | `false` | Render the CronJob, its ConfigMap and ServiceAccount |
 | `snapshotAgent.schedule` | string | `*/15 * * * *` | CronJob schedule (cluster time zone, usually UTC) |
 | `snapshotAgent.restartPolicy` | string | `OnFailure` | Pod `restartPolicy`. `OnFailure` or `Never` |
+| `snapshotAgent.concurrencyPolicy` | string | `Forbid` | `Allow`, `Forbid` or `Replace`. `Forbid` skips a run while the previous one is still going |
+| `snapshotAgent.startingDeadlineSeconds` | int or null | `null` | Skip a run that could not start within this time |
+| `snapshotAgent.successfulJobsHistoryLimit` | int or null | `null` | Finished successful Jobs to keep (Kubernetes default: 3) |
+| `snapshotAgent.failedJobsHistoryLimit` | int or null | `null` | Failed Jobs to keep (Kubernetes default: 1) |
+| `snapshotAgent.backoffLimit` | int or null | `null` | Job retries before it is marked failed (Kubernetes default: 6) |
+| `snapshotAgent.activeDeadlineSeconds` | int or null | `null` | Terminate a Job that runs longer than this |
+| `snapshotAgent.snapshotDirSizeLimit` | string | `""` | `sizeLimit` of the `emptyDir` the snapshot is written to, for example `2Gi`. Empty → no limit |
+| `snapshotAgent.extraLabels` | map | `{}` | Labels on the CronJob object |
 | `snapshotAgent.annotations` | map or string (tpl) | `{}` | Annotations on the CronJob object |
+| `snapshotAgent.job.extraLabels` / `job.annotations` | map (annotations: or string, tpl) | `{}` | Labels and annotations on the Jobs |
+| `snapshotAgent.pod.extraLabels` / `pod.annotations` | map (annotations: or string, tpl) | `{}` | Labels and annotations on the Job pods |
 | `snapshotAgent.resources` | map | `{}` | Container resources |
 | `snapshotAgent.tolerations` | list or string (tpl) | `[]` | Pod tolerations |
+| `snapshotAgent.nodeSelector` | map or string (tpl) | `{}` | Pod node selector |
+| `snapshotAgent.affinity` | map or string (tpl) | `{}` | Pod affinity |
 | `snapshotAgent.securityContext.pod` | map or string (tpl) | `{}` | Pod security context. Empty → non-root defaults (Kubernetes) |
 | `snapshotAgent.securityContext.container` | map or string (tpl) | `{}` | Container security context. Empty → no privilege escalation, `drop: [ALL]` |
 | `snapshotAgent.uid` / `snapshotAgent.gid` | int | *(undeclared; 100 / 1000)* | Used by the default pod security context |
 
-The CronJob has no `concurrencyPolicy`, `successfulJobsHistoryLimit`,
-`failedJobsHistoryLimit` or `startingDeadlineSeconds` settings. Kubernetes
-defaults apply: concurrent jobs are **allowed**, 3 successful and 1 failed
-job are kept.
+Values left at `null` are not rendered, and the Kubernetes defaults apply.
+`0` is a valid value, for example `successfulJobsHistoryLimit: 0`.
 
 ### 3.2 Image
 
 | Key | Type | Default |
 |-----|------|---------|
 | `snapshotAgent.image.repository` | string | `ghcr.io/openbao/openbao-snapshot-agent` |
-| `snapshotAgent.image.tag` | string | `0.3.0` |
+| `snapshotAgent.image.tag` | string | `0.4.5` |
 
 The image reference is `<repository>:<tag>`. There is no `registry` key and
-no `pullPolicy` key (`IfNotPresent` is fixed). `global.imagePullSecrets` and
-`deployDescriptor` are **not** applied. For a private registry, set
-`repository` to the full path and attach the pull secret to the snapshot
-ServiceAccount.
+no `pullPolicy` key (`IfNotPresent` is fixed). `global.imagePullSecrets` is
+applied to the Job pods. `deployDescriptor` is **not** applied. For a private
+registry, set `repository` to the full path.
 
 ### 3.3 ServiceAccount
 
@@ -133,8 +142,12 @@ into the container with `envFrom`.
 | `snapshotAgent.config.s3cmdExtraFlag` | `S3CMD_EXTRA_FLAG` | `-v` | Extra `s3cmd` flags. Omitted when empty |
 | `snapshotAgent.config.baoAuthPath` | `BAO_AUTH_PATH` | `kubernetes` | Kubernetes auth mount path |
 | `snapshotAgent.config.baoRole` | `BAO_ROLE` | `snapshot` | Kubernetes auth role |
+| `snapshotAgent.config.baoNamespace` | `BAO_NAMESPACE` | `""` | OpenBao namespace. Omitted when empty |
+| `snapshotAgent.config.baoAuthNamespace` | `BAO_AUTH_NAMESPACE` | `""` | Namespace of the auth method, if different from `baoNamespace`. Omitted when empty |
+| `snapshotAgent.config.baoSecretPath` | `BAO_SECRET_PATH` | `""` | KV path with `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` ([§3.5](#35-s3-credentials)). Omitted when empty |
+| `snapshotAgent.config.tokenPath` | `TOKEN_PATH` | `""` | ServiceAccount token file. Empty → `/var/run/secrets/kubernetes.io/serviceaccount/token` |
 | *(computed)* | `BAO_ADDR` | see below | OpenBao address |
-| *(computed, TLS on)* | `BAO_CACERT` | `<server.tls.mountPath>/<caKey>` | CA used to verify OpenBao |
+| *(computed, TLS on, not external)* | `BAO_CACERT` | `<server.tls.mountPath>/<caKey>` | CA used to verify OpenBao |
 
 `s3Host` defaults to `s3.eu-east-1.amazonaws.com`. AWS has no `eu-east-1`
 region. Always set it, for example `s3.eu-central-1.amazonaws.com`.
@@ -153,20 +166,47 @@ template ignores it). To override the address, use
 `snapshotAgent.extraEnvironmentVars.BAO_ADDR`; `env` entries take precedence
 over `envFrom`.
 
-The agent also understands `BAO_NAMESPACE`, `BAO_AUTH_NAMESPACE`,
-`BAO_SECRET_PATH` (read S3 credentials from OpenBao instead of a Secret) and
-`TOKEN_PATH`. The chart does not expose them; set them with
-`extraEnvironmentVars`.
-
 ### 3.5 S3 credentials
 
 | Key | Type | Default |
 |-----|------|---------|
-| `snapshotAgent.s3CredentialsSecret` | string | `my-s3-credentials` |
+| `snapshotAgent.s3CredentialsSecret` | string | `""` |
 
-The Secret must contain exactly the keys `AWS_ACCESS_KEY_ID` and
-`AWS_SECRET_ACCESS_KEY`. The CronJob always references them. Without the
-Secret, the pod stays in `CreateContainerConfigError`.
+Use one of these options:
+
+| Option | Configuration |
+|--------|---------------|
+| Kubernetes Secret | `s3CredentialsSecret: <name>`. The Secret must contain exactly the keys `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`. A missing Secret leaves the pod in `CreateContainerConfigError` |
+| KV secret in OpenBao | `config.baoSecretPath: <kv-path>` with fields `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`. The `snapshot` policy needs `read` on that path |
+| IRSA (EKS) | `serviceAccount.annotations` with `eks.amazonaws.com/role-arn`. The agent skips the key check when `AWS_ROLE_ARN` and `AWS_WEB_IDENTITY_TOKEN_FILE` are set |
+| Other Secret keys | `extraSecretEnvironmentVars` mapping your keys to `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` |
+
+When `s3CredentialsSecret` is empty, the chart renders no AWS variables. If
+none of the options is configured, the agent exits with
+`variable AWS_ACCESS_KEY_ID is empty`.
+
+Example with the credentials in OpenBao:
+
+```bash
+bao kv put secret/openbao-snapshot/s3 \
+  AWS_ACCESS_KEY_ID=<access-key> AWS_SECRET_ACCESS_KEY=<secret-key>
+
+bao policy write snapshot - <<'EOF'
+path "sys/storage/raft/snapshot" {
+  capabilities = ["read"]
+}
+path "secret/data/openbao-snapshot/s3" {
+  capabilities = ["read"]
+}
+EOF
+```
+
+```yaml
+snapshotAgent:
+  s3CredentialsSecret: ""
+  config:
+    baoSecretPath: secret/openbao-snapshot/s3
+```
 
 ### 3.6 Extra environment and volumes
 
@@ -177,8 +217,9 @@ Secret, the pod stays in `CreateContainerConfigError`.
 | `snapshotAgent.extraVolumes` | list | `[]` | Pod volumes (raw YAML) |
 | `snapshotAgent.extraVolumeMounts` | list | `[]` | Container mounts (raw YAML) |
 
-When `global.tlsDisable: false`, the chart already mounts the server TLS
-Secret at `server.tls.mountPath` in the agent and sets `BAO_CACERT`. Do not
+When `global.tlsDisable: false` and the chart deploys the server (not
+external mode), the chart already mounts the server TLS Secret at
+`server.tls.mountPath` in the agent and sets `BAO_CACERT`. Do not
 add the same mount again with `extraVolumeMounts`, as the commented example
 in `values.yaml` suggests; it duplicates the mount path.
 
@@ -192,8 +233,10 @@ in `values.yaml` suggests; it duplicates the mount path.
 | ConfigMap | `<fullname>-snapshot` | Agent configuration |
 | ServiceAccount | `<fullname>-snapshot` | When `serviceAccount.create: true` |
 
-Job pods carry `app.kubernetes.io/name: <openbao.name>`,
-`app.kubernetes.io/instance: <release>`, `component: snapshot-agent`. They
+Jobs and their pods carry `app.kubernetes.io/name: <openbao.name>`,
+`app.kubernetes.io/instance: <release>`,
+`app.kubernetes.io/component: snapshot-agent` (as upstream) and
+`component: snapshot-agent`, plus `job.extraLabels` / `pod.extraLabels`. They
 match the chart NetworkPolicy's pod selector, so its rules apply to them
 too.
 
@@ -336,22 +379,41 @@ name. The chart-generated certificate does.
 
 ### 6.3 External OpenBao
 
-See [09-deployment-modes.md §6.2](09-deployment-modes.md#62-values). Keep
-`global.tlsDisable: true` in external mode and provide the CA yourself;
-otherwise the agent mounts a TLS Secret that does not exist.
+See [09-deployment-modes.md §6.2](09-deployment-modes.md#62-values). In
+external mode the chart does not render a TLS Secret, so it neither mounts
+one in the agent nor sets `BAO_CACERT`. With an `https://` address and a
+private CA, provide the CA yourself:
+
+```yaml
+global:
+  externalBaoAddr: https://bao.example.com
+snapshotAgent:
+  enabled: true
+  extraVolumes:
+    - name: bao-ca
+      configMap:
+        name: bao-ca
+  extraVolumeMounts:
+    - name: bao-ca
+      mountPath: /etc/bao-ca
+      readOnly: true
+  extraEnvironmentVars:
+    BAO_CACERT: /etc/bao-ca/ca.crt
+```
 
 ### 6.4 Avoid overlapping runs
 
-The CronJob template does not expose `concurrencyPolicy`. A slow upload can
-overlap with the next run. Choose a schedule with enough margin, or patch the
-CronJob after installation:
+`snapshotAgent.concurrencyPolicy` defaults to `Forbid`: a run is skipped
+while the previous one is still going. Bound hung runs and missed starts:
 
-```bash
-kubectl -n openbao patch cronjob openbao-snapshot \
-  -p '{"spec":{"concurrencyPolicy":"Forbid","startingDeadlineSeconds":300}}'
+```yaml
+snapshotAgent:
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+  activeDeadlineSeconds: 1800
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
 ```
-
-`helm upgrade` resets the patch.
 
 ---
 
@@ -411,9 +473,9 @@ snapshot without them cannot be decrypted.
 | Change the schedule | `snapshotAgent.schedule`, then `helm upgrade` |
 | Run a snapshot now | `kubectl create job --from=cronjob/<fullname>-snapshot <name>` |
 | Pause backups | `kubectl patch cronjob <fullname>-snapshot -p '{"spec":{"suspend":true}}'` (reset by `helm upgrade`) |
-| Check recent runs | `kubectl get jobs -l component=snapshot-agent` and `kubectl logs job/<name>` |
-| Alert on failures | `kube_job_status_failed{job_name=~"openbao-snapshot.*"} > 0` from kube-state-metrics |
-| Alert on missing backups | `time() - kube_cronjob_status_last_successful_time{cronjob="openbao-snapshot"} > 2 * <interval>` |
+| Check recent runs | `kubectl get jobs -l app.kubernetes.io/component=snapshot-agent` and `kubectl logs job/<name>` |
+| Alert on failures | `kube_job_status_failed{job_name=~"openbao-snapshot.*"} > 0` from kube-state-metrics (`OpenBaoSnapshotJobFailed` in `examples/overlays/monitoring.yaml`) |
+| Alert on missing backups | `time() - kube_cronjob_status_last_successful_time{cronjob="openbao-snapshot"} > 2 * <interval>` (`OpenBaoSnapshotMissing` in `examples/overlays/monitoring.yaml`) |
 | Retention | `s3ExpireDays`, or an S3 lifecycle rule (more reliable: it also works when the agent stops running) |
 | Encryption at rest | Snapshots are encrypted by OpenBao's barrier key. Enable bucket encryption as well |
 | Off-site copies | Bucket replication to another region or account |
@@ -428,9 +490,12 @@ enough for most installations.
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Pod `CreateContainerConfigError` | `s3CredentialsSecret` missing, or keys not named `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Create the Secret with these exact keys |
-| Pod `ContainerCreating`, `secret "<fullname>-tls" not found` | TLS on in external mode, or the TLS Secret is not issued yet | See [§6.3](#63-external-openbao) and [07-tls.md](07-tls.md) |
-| `ErrImagePull` | Private registry without pull secret | Patch the snapshot ServiceAccount with `imagePullSecrets` |
+| Pod `CreateContainerConfigError` | `s3CredentialsSecret` set but the Secret is missing, or keys not named `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Create the Secret with these exact keys |
+| `variable AWS_ACCESS_KEY_ID is empty` | No S3 credentials configured | One of the options in [§3.5](#35-s3-credentials) |
+| Pod `ContainerCreating`, `secret "<fullname>-tls" not found` | The TLS Secret is not issued yet | See [07-tls.md](07-tls.md) |
+| `ErrImagePull` | Private registry without pull secret | Set `global.imagePullSecrets` |
+| `Job has reached the specified backoff limit` / `DeadlineExceeded` | `backoffLimit` or `activeDeadlineSeconds` reached | Check the pod logs; raise the limits for large snapshots |
+| Pod evicted, `ephemeral local storage usage exceeds` | Snapshot larger than `snapshotDirSizeLimit` | Raise it to about 2x the Raft data size |
 | Login fails: `permission denied` or `service account name not authorized` | Role bound to a different ServiceAccount or namespace | Match `bound_service_account_names` to `<fullname>-snapshot` |
 | Login fails: `invalid role name` | `baoRole` does not exist | Create the role, or set `config.baoRole` |
 | Login fails: `no handler for route "auth/kubernetes/login"` | Wrong `baoAuthPath` or method not enabled | Enable the method, set `config.baoAuthPath` |

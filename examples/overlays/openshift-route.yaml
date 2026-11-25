@@ -63,7 +63,7 @@ server:
   # the tag from server.image.tag. Check the tag exists in that registry, and
   # add a Red Hat pull secret if required:
   # image:
-  #   tag: "2.6.2"
+  #   tag: "2.7.3"
 
 # global:
 #   imagePullSecrets:

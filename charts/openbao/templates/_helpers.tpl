@@ -694,6 +694,9 @@ securityContext for the statefulset openbao container
   {{- else if not (include "openbao.isOpenshift" .) }}
           securityContext:
             allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
   {{- end }}
 {{- end -}}
 
@@ -1365,6 +1368,36 @@ Sets extra snapshotAgent job annotations
 {{- end -}}
 
 {{/*
+Sets extra snapshotAgent Job (jobTemplate) annotations
+*/}}
+{{- define "openbao.snapshotAgent.job.annotations" -}}
+  {{- if .Values.snapshotAgent.job.annotations }}
+      annotations:
+    {{- $tp := typeOf .Values.snapshotAgent.job.annotations }}
+    {{- if eq $tp "string" }}
+      {{- tpl .Values.snapshotAgent.job.annotations . | nindent 8 }}
+    {{- else }}
+      {{- toYaml .Values.snapshotAgent.job.annotations | nindent 8 }}
+    {{- end }}
+  {{- end }}
+{{- end -}}
+
+{{/*
+Sets extra snapshotAgent Pod annotations
+*/}}
+{{- define "openbao.snapshotAgent.pod.annotations" -}}
+  {{- if .Values.snapshotAgent.pod.annotations }}
+          annotations:
+    {{- $tp := typeOf .Values.snapshotAgent.pod.annotations }}
+    {{- if eq $tp "string" }}
+      {{- tpl .Values.snapshotAgent.pod.annotations . | nindent 12 }}
+    {{- else }}
+      {{- toYaml .Values.snapshotAgent.pod.annotations | nindent 12 }}
+    {{- end }}
+  {{- end }}
+{{- end -}}
+
+{{/*
 securityContext for the snapshotAgent pod level.
 */}}
 {{- define "snapshotAgent.securityContext.pod" -}}
@@ -1421,4 +1454,47 @@ tolerations for the snapshotAgent cronjob pod
             {{- toYaml .Values.snapshotAgent.tolerations | nindent 12 }}
           {{- end }}
   {{- end }}
+{{- end -}}
+
+{{/*
+nodeSelector for the snapshotAgent cronjob pod
+*/}}
+{{- define "snapshotAgent.nodeselector" -}}
+  {{- if .Values.snapshotAgent.nodeSelector }}
+          nodeSelector:
+          {{- $tp := typeOf .Values.snapshotAgent.nodeSelector }}
+          {{- if eq $tp "string" }}
+            {{- tpl .Values.snapshotAgent.nodeSelector . | nindent 12 }}
+          {{- else }}
+            {{- toYaml .Values.snapshotAgent.nodeSelector | nindent 12 }}
+          {{- end }}
+  {{- end }}
+{{- end -}}
+
+{{/*
+affinity for the snapshotAgent cronjob pod
+*/}}
+{{- define "snapshotAgent.affinity" -}}
+  {{- if .Values.snapshotAgent.affinity }}
+          affinity:
+          {{- $tp := typeOf .Values.snapshotAgent.affinity }}
+          {{- if eq $tp "string" }}
+            {{- tpl .Values.snapshotAgent.affinity . | nindent 12 }}
+          {{- else }}
+            {{- toYaml .Values.snapshotAgent.affinity | nindent 12 }}
+          {{- end }}
+  {{- end }}
+{{- end -}}
+
+{{/*
+Whether the snapshot agent should mount the chart-managed server TLS Secret.
+True only when TLS is enabled and the chart deploys the server (not in
+external mode, where the TLS Secret is not rendered). Requires .mode.
+*/}}
+{{- define "openbao.snapshotAgent.mountServerTls" -}}
+{{- if and (eq (include "openbao.tlsEnabled" .) "true") (ne .mode "external") -}}
+{{- "true" -}}
+{{- else -}}
+{{- "false" -}}
+{{- end -}}
 {{- end -}}

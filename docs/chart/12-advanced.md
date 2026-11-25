@@ -469,15 +469,15 @@ a Red Hat pull secret in `global.imagePullSecrets`.
 
 | Image | Source | Value |
 |-------|--------|-------|
-| Server | `quay.io/openbao/openbao:2.6.2` | `server.image.registry`, `repository`, `tag` |
-| Snapshot agent (optional) | `ghcr.io/openbao/openbao-snapshot-agent:0.3.0` | `snapshotAgent.image.repository`, `tag` |
+| Server | `quay.io/openbao/openbao:2.7.3` | `server.image.registry`, `repository`, `tag` |
+| Snapshot agent (optional) | `ghcr.io/openbao/openbao-snapshot-agent:0.4.5` | `snapshotAgent.image.repository`, `tag` |
 | Your init containers or sidecars | — | in `extraInitContainers` / `extraContainers` |
 
 ```bash
-skopeo copy docker://quay.io/openbao/openbao:2.6.2 \
-  docker://registry.internal.example.com/openbao/openbao:2.6.2
-skopeo copy docker://ghcr.io/openbao/openbao-snapshot-agent:0.3.0 \
-  docker://registry.internal.example.com/openbao/openbao-snapshot-agent:0.3.0
+skopeo copy docker://quay.io/openbao/openbao:2.7.3 \
+  docker://registry.internal.example.com/openbao/openbao:2.7.3
+skopeo copy docker://ghcr.io/openbao/openbao-snapshot-agent:0.4.5 \
+  docker://registry.internal.example.com/openbao/openbao-snapshot-agent:0.4.5
 ```
 
 ### 6.2 Values
@@ -491,21 +491,15 @@ server:
   image:
     registry: registry.internal.example.com
     repository: openbao/openbao
-    tag: "2.6.2"
+    tag: "2.7.3"
 
 snapshotAgent:
   image:
     repository: registry.internal.example.com/openbao/openbao-snapshot-agent
-    tag: "0.3.0"
+    tag: "0.4.5"
 ```
 
-The snapshot agent does not use `global.imagePullSecrets`. Add the pull
-secret to its ServiceAccount:
-
-```bash
-kubectl -n openbao patch serviceaccount openbao-snapshot \
-  -p '{"imagePullSecrets":[{"name":"internal-registry"}]}'
-```
+The snapshot agent CronJob uses `global.imagePullSecrets` as well.
 
 ### 6.3 Chart and dependencies
 
@@ -539,7 +533,7 @@ helm upgrade --install openbao ./charts/openbao -n openbao \
   -f charts/openbao/resource-profiles/medium.yaml \  # mode + resources
   -f values/common.yaml \                             # TLS, monitoring
   -f values/prod.yaml \                               # environment specifics
-  --set server.image.tag=2.6.2
+  --set server.image.tag=2.7.3
 ```
 
 Things to keep in mind:

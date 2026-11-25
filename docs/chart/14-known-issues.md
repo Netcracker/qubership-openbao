@@ -24,9 +24,9 @@ chart.
 | 3 | Examples | `examples/dev.yaml` enabled TLS with empty certificates (**fixed**) | — |
 | 4 | TLS | `rawCerts` / `existingSecret` without `ca.crt` breaks the readiness probe | Medium |
 | 5 | Raft | `retry_join` hard-coded to 3 replicas, no `leader_ca_cert_file` | Medium |
-| 6 | Snapshot | TLS Secret mounted in external mode, where it does not exist | Medium |
+| 6 | Snapshot | TLS Secret mounted in external mode (**fixed**) | — |
 | 7 | Snapshot | `snapshotAgent.config.baoAddr` is used by tests but not by the template | Medium |
-| 8 | Snapshot | No `imagePullSecrets`, `concurrencyPolicy` or history limits | Medium |
+| 8 | Snapshot | No `imagePullSecrets`, `concurrencyPolicy` or history limits (**fixed**) | — |
 | 9 | Snapshot | Default `s3Host` names a non-existent AWS region | Low |
 | 10 | Gateway | `tlsRoute.apiVersion` defaults to `v1` | Medium |
 | 11 | Gateway | BackendTLSPolicy: Secret CA reference, `hostname` always appended | Medium |
@@ -161,21 +161,23 @@ blocks for pods `-0`, `-1`, `-2`, with `leader_api_addr` only.
 
 ---
 
-## 6. Snapshot agent mounts a non-existent TLS Secret in external mode
+## 6. Snapshot agent mounts a non-existent TLS Secret in external mode (fixed)
 
-**Evidence.** `snapshotagent-cronjob.yaml` mounts `<fullname>-tls` whenever
-`openbao.tlsEnabled` is true. The TLS objects are not rendered in external
-mode.
+**Status.** Fixed. The helper `openbao.snapshotAgent.mountServerTls`
+(`templates/_helpers.tpl`) returns true only when TLS is on and the mode is
+not `external`. The CronJob mounts the TLS Secret and the ConfigMap sets
+`BAO_CACERT` only in that case. In external mode, provide the CA through
+`snapshotAgent.extraVolumes` / `extraVolumeMounts` and `BAO_CACERT` in
+`extraEnvironmentVars`
+([11-backup-snapshot-agent.md §6.3](11-backup-snapshot-agent.md#63-external-openbao)).
+Covered by `test/unit/snapshotagent.bats`.
 
-**Impact.** With `global.externalBaoAddr` and `global.tlsDisable: false`,
-the CronJob pods stay in `ContainerCreating`.
+**Evidence (previous version).** `snapshotagent-cronjob.yaml` mounted
+`<fullname>-tls` whenever `openbao.tlsEnabled` was true. The TLS objects are
+not rendered in external mode.
 
-**Workaround.** Keep `global.tlsDisable: true` in external mode and mount the
-CA through `snapshotAgent.extraVolumes` / `extraVolumeMounts` with
-`BAO_CACERT` in `extraEnvironmentVars`.
-
-**Suggested fix.** Mount the TLS Secret only when the mode is not
-`external`, or add a `snapshotAgent.caSecret` value.
+**Impact (previous version).** With `global.externalBaoAddr` and
+`global.tlsDisable: false`, the CronJob pods stayed in `ContainerCreating`.
 
 ---
 
@@ -196,19 +198,22 @@ expected.
 
 ---
 
-## 8. Snapshot CronJob options missing
+## 8. Snapshot CronJob options missing (fixed)
 
-**Evidence.** `snapshotagent-cronjob.yaml` has no `imagePullSecrets`,
-`concurrencyPolicy`, `startingDeadlineSeconds`, history limits, `nodeSelector`
-or `affinity`. The image has no `registry` or `pullPolicy` value.
+**Status.** Fixed while syncing with upstream `openbao-helm`. The CronJob now
+renders `global.imagePullSecrets`, `concurrencyPolicy` (default `Forbid`),
+`startingDeadlineSeconds`, `successfulJobsHistoryLimit`,
+`failedJobsHistoryLimit`, Job `backoffLimit` / `activeDeadlineSeconds`,
+`nodeSelector`, `affinity`, and Job/Pod labels and annotations
+([11-backup-snapshot-agent.md §3.1](11-backup-snapshot-agent.md#31-job)).
+Covered by `test/unit/snapshotagent.bats`.
 
-**Impact.** Private registries need a ServiceAccount patch; slow uploads can
-overlap; jobs cannot be pinned to nodes.
+Still open: the image has no `registry` or `pullPolicy` value, and
+`deployDescriptor` does not override the snapshot image.
 
-**Workaround.** See [11-backup-snapshot-agent.md §6.4](11-backup-snapshot-agent.md#64-avoid-overlapping-runs).
-
-**Suggested fix.** Add the fields with sensible defaults
-(`concurrencyPolicy: Forbid`) and reuse the `imagePullSecrets` helper.
+**Evidence (previous version).** `snapshotagent-cronjob.yaml` had no
+`imagePullSecrets`, `concurrencyPolicy`, `startingDeadlineSeconds`, history
+limits, `nodeSelector` or `affinity`.
 
 ---
 
@@ -434,8 +439,8 @@ OpenShift. `server-ingress.yaml` does not check `global.openshift`.
 
 | Source | Version |
 |--------|---------|
-| `Chart.yaml` | `appVersion: v2.6.2` |
-| `values.yaml` | `server.image.tag: "2.6.2"` |
+| `Chart.yaml` | `appVersion: v2.7.3` |
+| `values.yaml` | `server.image.tag: "2.7.3"` |
 | `charts/openbao/README.md` | badge `v2.5.4`, `server.image.tag` `""` |
 | `docs/configuration.md` | `server.image.tag` `"2.5"` |
 
